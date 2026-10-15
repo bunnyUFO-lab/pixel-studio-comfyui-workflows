@@ -1,0 +1,771 @@
+{
+  "id": "11ce1874-2715-5837-b237-6957fca4ab50",
+  "revision": 0,
+  "last_node_id": 30,
+  "last_link_id": 19,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        400,
+        440
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            4,
+            13,
+            18
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            5,
+            15
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Input image (paint a mask to inpaint)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 20,
+      "type": "UNETLoader",
+      "pos": [
+        440,
+        0
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "title": "Qwen-Image-2.1"
+    },
+    {
+      "id": 21,
+      "type": "QwenImage21Cache",
+      "pos": [
+        440,
+        120
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "QwenImage21Cache"
+      },
+      "widgets_values": [
+        "auto",
+        "default"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "CLIPLoader",
+      "pos": [
+        440,
+        240
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "title": "Qwen3-VL text encoder"
+    },
+    {
+      "id": 23,
+      "type": "VAELoader",
+      "pos": [
+        440,
+        390
+      ],
+      "size": [
+        340,
+        58
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            3,
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ]
+    },
+    {
+      "id": 30,
+      "type": "CropForMaskedEdit",
+      "pos": [
+        440,
+        500
+      ],
+      "size": [
+        340,
+        130
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "crop_info",
+          "type": "CROP_INFO",
+          "links": [
+            16
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CropForMaskedEdit"
+      },
+      "widgets_values": [
+        0.75,
+        64,
+        1.0
+      ],
+      "title": "Crop to mask + enlarge (small areas)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 24,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        820,
+        0
+      ],
+      "size": [
+        440,
+        300
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 3
+        },
+        {
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            9
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            10
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21"
+      },
+      "widgets_values": [
+        "Make the spiders on <image1> dark red, keep everything else exactly the same.",
+        "",
+        1024
+      ],
+      "title": "Edit prompt",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 25,
+      "type": "KSampler",
+      "pos": [
+        820,
+        340
+      ],
+      "size": [
+        320,
+        262
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 7
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 8
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 9
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        1234,
+        "randomize",
+        25,
+        1.0,
+        "euler",
+        "simple",
+        1.0
+      ],
+      "title": "Qwen edit"
+    },
+    {
+      "id": 26,
+      "type": "VAEDecode",
+      "pos": [
+        820,
+        640
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 11
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 27,
+      "type": "MaskedEditComposite",
+      "pos": [
+        1300,
+        0
+      ],
+      "size": [
+        320,
+        130
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "original",
+          "type": "IMAGE",
+          "link": 13
+        },
+        {
+          "name": "edited",
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 15
+        },
+        {
+          "name": "crop_info",
+          "type": "CROP_INFO",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            17,
+            19
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "used_mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskedEditComposite"
+      },
+      "widgets_values": [
+        8,
+        12
+      ],
+      "title": "Apply edit (inside mask, or everywhere)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 28,
+      "type": "SaveImage",
+      "pos": [
+        1660,
+        0
+      ],
+      "size": [
+        420,
+        460
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 17
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "edit/qwen_edit"
+      ],
+      "title": "Result",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 29,
+      "type": "ImageCompare",
+      "pos": [
+        1300,
+        180
+      ],
+      "size": [
+        340,
+        420
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_a",
+          "type": "IMAGE",
+          "link": 18
+        },
+        {
+          "name": "image_b",
+          "type": "IMAGE",
+          "link": 19
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ImageCompare"
+      },
+      "widgets_values": [],
+      "title": "Before / after"
+    },
+    {
+      "id": 11,
+      "type": "Note",
+      "pos": [
+        0,
+        490
+      ],
+      "size": [
+        460,
+        520
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Image edit with optional inpainting (Qwen-Image-2.1)\n\n1. Load an image (blue).\n2. Optional - inpaint: right-click the image node -> Open in MaskEditor, paint over the\n   area to change, Save. Only that area changes; everything else stays pixel-identical.\n   The masked area is cropped + enlarged first, so even small details (eyes) can be edited.\n   No mask = the whole image is edited.\n3. Write the edit as an instruction in the prompt (green). Refer to the image as <image1>.\n   Good: \"Replace the scythe with a spear, keep the pose\". \"Make the cape dark red\".\n   \"Remove the spider on the helmet\". \"Change the background to a misty forest\".\n   With a mask, describe the change for that area and still say \"keep everything else\".\n4. Run. Saved to output/edit/qwen_edit_*.png; the Compare node shows before/after.\nTo keep editing: upload the result as the new input (or drag it from the queue onto\nthe Load Image node), paint a new mask, run again.\n\nMask edges: grow_px enlarges the painted area, feather_px softens the edge.\nCrop: context = how much surrounding area the model sees (0.75 = 75% of the mask size).\n~30-45 s per edit on an RTX 4090. Licence: Qwen Research (non-commercial)."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      20,
+      0,
+      21,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      22,
+      0,
+      24,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      23,
+      0,
+      24,
+      1,
+      "VAE"
+    ],
+    [
+      4,
+      1,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      1,
+      30,
+      1,
+      "MASK"
+    ],
+    [
+      6,
+      30,
+      0,
+      24,
+      2,
+      "IMAGE"
+    ],
+    [
+      7,
+      21,
+      0,
+      25,
+      0,
+      "MODEL"
+    ],
+    [
+      8,
+      24,
+      0,
+      25,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      24,
+      1,
+      25,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      24,
+      2,
+      25,
+      3,
+      "LATENT"
+    ],
+    [
+      11,
+      25,
+      0,
+      26,
+      0,
+      "LATENT"
+    ],
+    [
+      12,
+      23,
+      0,
+      26,
+      1,
+      "VAE"
+    ],
+    [
+      13,
+      1,
+      0,
+      27,
+      0,
+      "IMAGE"
+    ],
+    [
+      14,
+      26,
+      0,
+      27,
+      1,
+      "IMAGE"
+    ],
+    [
+      15,
+      1,
+      1,
+      27,
+      2,
+      "MASK"
+    ],
+    [
+      16,
+      30,
+      1,
+      27,
+      3,
+      "CROP_INFO"
+    ],
+    [
+      17,
+      27,
+      0,
+      28,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      1,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      27,
+      0,
+      29,
+      1,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Qwen-Image-2.1 edit",
+      "bounding": [
+        420,
+        -60,
+        860,
+        780
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7,
+      "offset": [
+        40,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}

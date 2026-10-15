@@ -1,0 +1,1086 @@
+{
+  "id": "2595a0ad-ca5d-50e8-a970-4755fdeebb7a",
+  "revision": 0,
+  "last_node_id": 27,
+  "last_link_id": 22,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "VectorArtPrompt",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        420,
+        420
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": [
+            1,
+            2
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "colors",
+          "type": "INT",
+          "links": [
+            3
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": [
+            4
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VectorArtPrompt"
+      },
+      "widgets_values": [
+        "generate",
+        "a friendly fox mascot head",
+        "cartoon character",
+        6,
+        "",
+        "low",
+        "bold dark outlines",
+        "one shadow + one highlight",
+        "plain white",
+        ""
+      ],
+      "title": "Vector Art Prompt",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 2,
+      "type": "PreviewAny",
+      "pos": [
+        0,
+        460
+      ],
+      "size": [
+        420,
+        240
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 1
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Final prompt"
+    },
+    {
+      "id": 3,
+      "type": "Note",
+      "pos": [
+        0,
+        740
+      ],
+      "size": [
+        460,
+        440
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Prompt -> layered SVG\n\n1. Vector Art Prompt (green): type just the SUBJECT (\"a fox mascot head\", \"a treasure chest icon\").\n   style = flat vector illustration, cartoon character, logo / emblem, icon, sticker, line art, game item / UI art,\n   stylized game character. colors / palette (hex or PICO-8, DB32...) are asked for in the prompt AND used by\n   Layered Vectorize. detail: fewer details = fewer, bigger shapes. outlines become the ink layer; shading\n   'one shadow + one highlight' fills the shadow/highlight layers, 'flat' gives the fewest shapes.\n   See the full prompt in \"Final prompt\". Change the seed in the sampler for variations.\n2. Z-Image Turbo (Apache-2.0) draws it at 1024x1024 in ~10 s; the drawing is saved too\n   (output/svg/prompt_to_svg_image_*.png).\n3. AI upscale x4 -> 2048 px -> Layered Vectorize (same settings as layered-svg) -> output/svg/prompt_to_svg_*.svg.\n\"Shapes & file size\" shows how simple the SVG came out."
+      ],
+      "title": "READ ME"
+    },
+    {
+      "id": 10,
+      "type": "UNETLoader",
+      "pos": [
+        460,
+        0
+      ],
+      "size": [
+        360,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "z_image_turbo_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "z_image_turbo_int8_convrot.safetensors",
+        "default"
+      ],
+      "title": "Z-Image Turbo"
+    },
+    {
+      "id": 11,
+      "type": "ModelSamplingAuraFlow",
+      "pos": [
+        460,
+        120
+      ],
+      "size": [
+        360,
+        58
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ModelSamplingAuraFlow"
+      },
+      "widgets_values": [
+        3.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "CLIPLoader",
+      "pos": [
+        460,
+        220
+      ],
+      "size": [
+        360,
+        106
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen_3_4b_fp8_mixed.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_3_4b_fp8_mixed.safetensors",
+        "lumina2",
+        "default"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "VAELoader",
+      "pos": [
+        460,
+        370
+      ],
+      "size": [
+        360,
+        58
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "ae.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "ae.safetensors"
+      ]
+    },
+    {
+      "id": 14,
+      "type": "CLIPTextEncode",
+      "pos": [
+        460,
+        470
+      ],
+      "size": [
+        360,
+        100
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 7
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 2,
+          "widget": {
+            "name": "text"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            8,
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Encode prompt"
+    },
+    {
+      "id": 15,
+      "type": "ConditioningZeroOut",
+      "pos": [
+        460,
+        610
+      ],
+      "size": [
+        240,
+        26
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ConditioningZeroOut"
+      }
+    },
+    {
+      "id": 16,
+      "type": "EmptySD3LatentImage",
+      "pos": [
+        460,
+        680
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptySD3LatentImage"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        1
+      ]
+    },
+    {
+      "id": 17,
+      "type": "KSampler",
+      "pos": [
+        860,
+        0
+      ],
+      "size": [
+        320,
+        262
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 6
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 9
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        7,
+        "randomize",
+        8,
+        1.0,
+        "res_multistep",
+        "simple",
+        1.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "VAEDecode",
+      "pos": [
+        860,
+        310
+      ],
+      "size": [
+        200,
+        46
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 12
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14,
+            16
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 19,
+      "type": "SaveImage",
+      "pos": [
+        860,
+        400
+      ],
+      "size": [
+        320,
+        360
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "svg/prompt_to_svg_image"
+      ],
+      "title": "Generated image"
+    },
+    {
+      "id": 20,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        1220,
+        0
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader",
+        "models": [
+          {
+            "name": "RealESRGAN_x4plus_anime_6B.pth",
+            "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+            "directory": "upscale_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "RealESRGAN_x4plus_anime_6B.pth"
+      ],
+      "title": "AI upscaler (Real-ESRGAN anime)"
+    },
+    {
+      "id": 21,
+      "type": "ImageUpscaleWithModel",
+      "pos": [
+        1220,
+        100
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 15
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageUpscaleWithModel"
+      },
+      "title": "AI upscale x4"
+    },
+    {
+      "id": 22,
+      "type": "ImageScaleToMaxDimension",
+      "pos": [
+        1220,
+        190
+      ],
+      "size": [
+        320,
+        82
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            18
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScaleToMaxDimension"
+      },
+      "widgets_values": [
+        "lanczos",
+        2048
+      ],
+      "title": "Resize (longest side)"
+    },
+    {
+      "id": 23,
+      "type": "LayeredVectorize",
+      "pos": [
+        1580,
+        0
+      ],
+      "size": [
+        360,
+        520
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 18
+        },
+        {
+          "name": "colors",
+          "type": "INT",
+          "link": 3,
+          "widget": {
+            "name": "colors"
+          }
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "link": 4,
+          "widget": {
+            "name": "palette"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "links": [
+            19,
+            21
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LayeredVectorize"
+      },
+      "widgets_values": [
+        6,
+        "",
+        2000,
+        22,
+        6.0,
+        25.0,
+        60,
+        0.3,
+        0.35,
+        1.1,
+        "per region",
+        true,
+        true,
+        true,
+        true,
+        true,
+        "stacked",
+        2,
+        0,
+        0,
+        2,
+        "tinted"
+      ],
+      "title": "Layered Vectorize",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 24,
+      "type": "TS_SVGStringToSVGBytesIO",
+      "pos": [
+        1980,
+        0
+      ],
+      "size": [
+        300,
+        26
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SVG",
+          "type": "SVG",
+          "links": [
+            20
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TS_SVGStringToSVGBytesIO"
+      },
+      "title": "SVG text -> SVG"
+    },
+    {
+      "id": 25,
+      "type": "SaveSVGNode",
+      "pos": [
+        1980,
+        80
+      ],
+      "size": [
+        420,
+        520
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "svg",
+          "type": "SVG",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "svg",
+          "type": "SVG",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveSVGNode"
+      },
+      "widgets_values": [
+        "svg/prompt_to_svg"
+      ],
+      "title": "Save SVG (output/svg/)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 26,
+      "type": "SVGStats",
+      "pos": [
+        2440,
+        0
+      ],
+      "size": [
+        300,
+        70
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "shapes",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "size_kb",
+          "type": "FLOAT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SVGStats"
+      },
+      "title": "SVG Stats"
+    },
+    {
+      "id": 27,
+      "type": "PreviewAny",
+      "pos": [
+        2440,
+        110
+      ],
+      "size": [
+        340,
+        200
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 22
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Shapes & file size"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      2,
+      1,
+      0,
+      14,
+      1,
+      "STRING"
+    ],
+    [
+      3,
+      1,
+      1,
+      23,
+      1,
+      "INT"
+    ],
+    [
+      4,
+      1,
+      2,
+      23,
+      2,
+      "STRING"
+    ],
+    [
+      5,
+      10,
+      0,
+      11,
+      0,
+      "MODEL"
+    ],
+    [
+      6,
+      11,
+      0,
+      17,
+      0,
+      "MODEL"
+    ],
+    [
+      7,
+      12,
+      0,
+      14,
+      0,
+      "CLIP"
+    ],
+    [
+      8,
+      14,
+      0,
+      15,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      14,
+      0,
+      17,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      15,
+      0,
+      17,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      16,
+      0,
+      17,
+      3,
+      "LATENT"
+    ],
+    [
+      12,
+      17,
+      0,
+      18,
+      0,
+      "LATENT"
+    ],
+    [
+      13,
+      13,
+      0,
+      18,
+      1,
+      "VAE"
+    ],
+    [
+      14,
+      18,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      20,
+      0,
+      21,
+      0,
+      "UPSCALE_MODEL"
+    ],
+    [
+      16,
+      18,
+      0,
+      21,
+      1,
+      "IMAGE"
+    ],
+    [
+      17,
+      21,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      22,
+      0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      23,
+      0,
+      24,
+      0,
+      "STRING"
+    ],
+    [
+      20,
+      24,
+      0,
+      25,
+      0,
+      "SVG"
+    ],
+    [
+      21,
+      23,
+      0,
+      26,
+      0,
+      "STRING"
+    ],
+    [
+      22,
+      26,
+      0,
+      27,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Z-Image Turbo",
+      "bounding": [
+        440,
+        -60,
+        760,
+        880
+      ],
+      "color": "#444",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Vectorize",
+      "bounding": [
+        1200,
+        -60,
+        1600,
+        700
+      ],
+      "color": "#8A8",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.55,
+      "offset": [
+        40,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}

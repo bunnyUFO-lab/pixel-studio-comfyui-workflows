@@ -1,0 +1,1099 @@
+{
+  "id": "5344fa77-2078-5b34-aab8-1a2a5edf18d7",
+  "revision": 0,
+  "last_node_id": 29,
+  "last_link_id": 23,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        400,
+        420
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Input image",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 11,
+      "type": "Note",
+      "pos": [
+        0,
+        470
+      ],
+      "size": [
+        460,
+        560
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Layered SVG with AI repaint (Qwen-Image-2.1)\n\n1. Load your image (blue).\n2. Vector Art Prompt (green) builds the repaint instruction. The default (faithful flat redraw) keeps every\n   object recognizable, one flat base colour per element, the same colour for similar elements, simple\n   hard-edged highlights/shadows, no gradients or texture, no lost details. Change style (cartoon, logo, icon,\n   sticker, line art, game UI...), colours / palette (also used by Layered Vectorize), detail (fewer details =\n   fewer shapes), outlines and shading; add specifics in 'subject' (\"spiders dark brown\"). See \"Final prompt\".\n3. Run. The repainted image is saved (output/svg/layered_ai_repaint_*.png) and shown,\n   then vectorized into layers (flats, shadows, highlights, ink, details).\n4. Optional: to force exact colours in the SVG, type hex colours in Layered Vectorize -> palette\n   (include one for every area, or areas snap to the nearest one). Empty = automatic colours.\n\nCompare with / without the repaint: select \"Qwen repaint\" KSampler and press Ctrl+B\n(bypass) - then the original image goes straight to the vectorizer.\nRepaint takes ~45 s on an RTX 4090 the first time (model loading), less afterwards.\nDifferent seed = different repaint; keep one you like (control_after_generate = fixed).\n\nModels (~17.3 GB, MODELS preset env/svg.env): Qwen-Image-2.1 int8, Qwen3-VL 8B int8 text\nencoder, Qwen-Image-2.1 VAE. Licence: Qwen Research (non-commercial)."
+      ],
+      "title": "READ ME"
+    },
+    {
+      "id": 20,
+      "type": "UNETLoader",
+      "pos": [
+        440,
+        0
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "title": "Qwen-Image-2.1"
+    },
+    {
+      "id": 21,
+      "type": "QwenImage21Cache",
+      "pos": [
+        440,
+        120
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "QwenImage21Cache"
+      },
+      "widgets_values": [
+        "auto",
+        "default"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "CLIPLoader",
+      "pos": [
+        440,
+        240
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "title": "Qwen3-VL text encoder"
+    },
+    {
+      "id": 23,
+      "type": "VAELoader",
+      "pos": [
+        440,
+        390
+      ],
+      "size": [
+        340,
+        58
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            3,
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ]
+    },
+    {
+      "id": 28,
+      "type": "VectorArtPrompt",
+      "pos": [
+        820,
+        -520
+      ],
+      "size": [
+        440,
+        420
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": [
+            20,
+            21
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "colors",
+          "type": "INT",
+          "links": [
+            22
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": [
+            23
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VectorArtPrompt"
+      },
+      "widgets_values": [
+        "redraw <image1>",
+        "",
+        "faithful flat redraw",
+        6,
+        "",
+        "medium",
+        "bold dark outlines",
+        "one shadow + one highlight",
+        "plain white",
+        ""
+      ],
+      "title": "Vector Art Prompt (repaint)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 29,
+      "type": "PreviewAny",
+      "pos": [
+        1300,
+        -520
+      ],
+      "size": [
+        400,
+        240
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 21
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Final prompt"
+    },
+    {
+      "id": 24,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        820,
+        0
+      ],
+      "size": [
+        440,
+        330
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 3
+        },
+        {
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 20,
+          "widget": {
+            "name": "prompt"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            7
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            8
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21"
+      },
+      "widgets_values": [
+        "",
+        "",
+        1024
+      ],
+      "title": "Encode repaint prompt"
+    },
+    {
+      "id": 25,
+      "type": "KSampler",
+      "pos": [
+        820,
+        370
+      ],
+      "size": [
+        320,
+        262
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 5
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 6
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 7
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        1234,
+        "randomize",
+        25,
+        1.0,
+        "euler",
+        "simple",
+        1.0
+      ],
+      "title": "Qwen repaint (Ctrl+B to skip)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 26,
+      "type": "VAEDecode",
+      "pos": [
+        820,
+        670
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 9
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            11,
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 27,
+      "type": "SaveImage",
+      "pos": [
+        1300,
+        0
+      ],
+      "size": [
+        400,
+        420
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "svg/layered_ai_repaint"
+      ],
+      "title": "Repainted image"
+    },
+    {
+      "id": 12,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        1300,
+        460
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader",
+        "models": [
+          {
+            "name": "RealESRGAN_x4plus_anime_6B.pth",
+            "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+            "directory": "upscale_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "RealESRGAN_x4plus_anime_6B.pth"
+      ],
+      "title": "AI upscaler (Real-ESRGAN anime)"
+    },
+    {
+      "id": 13,
+      "type": "ImageUpscaleWithModel",
+      "pos": [
+        1300,
+        560
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 12
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageUpscaleWithModel"
+      },
+      "title": "AI upscale x4"
+    },
+    {
+      "id": 2,
+      "type": "ImageScaleToMaxDimension",
+      "pos": [
+        1300,
+        650
+      ],
+      "size": [
+        320,
+        82
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScaleToMaxDimension"
+      },
+      "widgets_values": [
+        "lanczos",
+        2048
+      ],
+      "title": "Resize (longest side)"
+    },
+    {
+      "id": 8,
+      "type": "LayeredVectorize",
+      "pos": [
+        1740,
+        0
+      ],
+      "size": [
+        360,
+        520
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "name": "colors",
+          "type": "INT",
+          "link": 22,
+          "widget": {
+            "name": "colors"
+          }
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "link": 23,
+          "widget": {
+            "name": "palette"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "links": [
+            16,
+            18
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LayeredVectorize"
+      },
+      "widgets_values": [
+        6,
+        "",
+        2000,
+        22,
+        6.0,
+        25.0,
+        60,
+        0.3,
+        0.35,
+        1.1,
+        "per region",
+        true,
+        true,
+        true,
+        true,
+        true,
+        "stacked",
+        2,
+        0,
+        0,
+        2,
+        "tinted"
+      ],
+      "title": "Layered Vectorize",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 14,
+      "type": "TS_SVGStringToSVGBytesIO",
+      "pos": [
+        2140,
+        0
+      ],
+      "size": [
+        300,
+        26
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SVG",
+          "type": "SVG",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TS_SVGStringToSVGBytesIO"
+      },
+      "title": "SVG text -> SVG"
+    },
+    {
+      "id": 9,
+      "type": "SaveSVGNode",
+      "pos": [
+        2140,
+        80
+      ],
+      "size": [
+        420,
+        520
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "svg",
+          "type": "SVG",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "svg",
+          "type": "SVG",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveSVGNode"
+      },
+      "widgets_values": [
+        "svg/layered_ai"
+      ],
+      "title": "Save SVG (output/svg/)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 15,
+      "type": "SVGStats",
+      "pos": [
+        2600,
+        0
+      ],
+      "size": [
+        300,
+        70
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            19
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "shapes",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "size_kb",
+          "type": "FLOAT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SVGStats"
+      },
+      "title": "SVG Stats"
+    },
+    {
+      "id": 16,
+      "type": "PreviewAny",
+      "pos": [
+        2600,
+        110
+      ],
+      "size": [
+        340,
+        200
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 19
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Shapes & file size"
+    }
+  ],
+  "links": [
+    [
+      1,
+      20,
+      0,
+      21,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      22,
+      0,
+      24,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      23,
+      0,
+      24,
+      1,
+      "VAE"
+    ],
+    [
+      4,
+      1,
+      0,
+      24,
+      2,
+      "IMAGE"
+    ],
+    [
+      5,
+      21,
+      0,
+      25,
+      0,
+      "MODEL"
+    ],
+    [
+      6,
+      24,
+      0,
+      25,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      7,
+      24,
+      1,
+      25,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      8,
+      24,
+      2,
+      25,
+      3,
+      "LATENT"
+    ],
+    [
+      9,
+      25,
+      0,
+      26,
+      0,
+      "LATENT"
+    ],
+    [
+      10,
+      23,
+      0,
+      26,
+      1,
+      "VAE"
+    ],
+    [
+      11,
+      26,
+      0,
+      27,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
+      12,
+      0,
+      13,
+      0,
+      "UPSCALE_MODEL"
+    ],
+    [
+      13,
+      26,
+      0,
+      13,
+      1,
+      "IMAGE"
+    ],
+    [
+      14,
+      13,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      2,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      16,
+      8,
+      0,
+      14,
+      0,
+      "STRING"
+    ],
+    [
+      17,
+      14,
+      0,
+      9,
+      0,
+      "SVG"
+    ],
+    [
+      18,
+      8,
+      0,
+      15,
+      0,
+      "STRING"
+    ],
+    [
+      19,
+      15,
+      0,
+      16,
+      0,
+      "STRING"
+    ],
+    [
+      20,
+      28,
+      0,
+      24,
+      3,
+      "STRING"
+    ],
+    [
+      21,
+      28,
+      0,
+      29,
+      0,
+      "STRING"
+    ],
+    [
+      22,
+      28,
+      1,
+      8,
+      1,
+      "INT"
+    ],
+    [
+      23,
+      28,
+      2,
+      8,
+      2,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Qwen-Image-2.1 repaint",
+      "bounding": [
+        420,
+        -60,
+        860,
+        800
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Vectorize",
+      "bounding": [
+        1280,
+        -60,
+        1680,
+        820
+      ],
+      "color": "#8A8",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.55,
+      "offset": [
+        40,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}

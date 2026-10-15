@@ -1,0 +1,1061 @@
+{
+  "id": "6024238d-865d-5abc-8121-04096994159a",
+  "revision": 0,
+  "last_node_id": 20,
+  "last_link_id": 21,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        360,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "z_image_turbo_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "z_image_turbo_int8_convrot.safetensors",
+        "default"
+      ],
+      "title": "Z-Image Turbo"
+    },
+    {
+      "id": 2,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        0,
+        120
+      ],
+      "size": [
+        360,
+        82
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly",
+        "models": [
+          {
+            "name": "pixel_art_style_z_image_turbo.safetensors",
+            "url": "https://huggingface.co/tarn59/pixel_art_style_lora_z_image_turbo/resolve/main/pixel_art_style_z_image_turbo.safetensors",
+            "directory": "loras"
+          }
+        ]
+      },
+      "widgets_values": [
+        "pixel_art_style_z_image_turbo.safetensors",
+        0.0
+      ],
+      "title": "Pixel-art LoRA"
+    },
+    {
+      "id": 3,
+      "type": "ModelSamplingAuraFlow",
+      "pos": [
+        0,
+        240
+      ],
+      "size": [
+        360,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ModelSamplingAuraFlow"
+      },
+      "widgets_values": [
+        3.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "CLIPLoader",
+      "pos": [
+        0,
+        340
+      ],
+      "size": [
+        360,
+        106
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen_3_4b_fp8_mixed.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_3_4b_fp8_mixed.safetensors",
+        "lumina2",
+        "default"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "VAELoader",
+      "pos": [
+        0,
+        490
+      ],
+      "size": [
+        360,
+        58
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "ae.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "ae.safetensors"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "PixelArtPrompt",
+      "pos": [
+        400,
+        -480
+      ],
+      "size": [
+        420,
+        460
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": [
+            5,
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "pixels",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "colors",
+          "type": "INT",
+          "links": [
+            7
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": [
+            8
+          ],
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixelArtPrompt"
+      },
+      "widgets_values": [
+        "lush green grass with small flowers",
+        "terrain tile (seamless)",
+        "top-down",
+        64,
+        "auto (from pixels)",
+        6,
+        "auto",
+        "no outline",
+        "plain white",
+        false,
+        ""
+      ],
+      "title": "Pixel Art Prompt",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 7,
+      "type": "PreviewAny",
+      "pos": [
+        860,
+        -480
+      ],
+      "size": [
+        420,
+        200
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 6
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Final prompt"
+    },
+    {
+      "id": 8,
+      "type": "CLIPTextEncode",
+      "pos": [
+        400,
+        0
+      ],
+      "size": [
+        420,
+        120
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 4
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 5,
+          "widget": {
+            "name": "text"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            9,
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Encode prompt"
+    },
+    {
+      "id": 9,
+      "type": "ConditioningZeroOut",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        240,
+        26
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ConditioningZeroOut"
+      }
+    },
+    {
+      "id": 10,
+      "type": "EmptySD3LatentImage",
+      "pos": [
+        400,
+        230
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptySD3LatentImage"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        1
+      ]
+    },
+    {
+      "id": 11,
+      "type": "KSampler",
+      "pos": [
+        860,
+        0
+      ],
+      "size": [
+        320,
+        262
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 3
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 11
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        3,
+        "randomize",
+        8,
+        1.0,
+        "res_multistep",
+        "simple",
+        1.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "VAEDecode",
+      "pos": [
+        860,
+        310
+      ],
+      "size": [
+        200,
+        46
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 13
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            15,
+            20
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 13,
+      "type": "Pixelize",
+      "pos": [
+        1220,
+        0
+      ],
+      "size": [
+        360,
+        440
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "name": "colors",
+          "type": "INT",
+          "link": 7,
+          "widget": {
+            "name": "colors"
+          }
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "link": 8,
+          "widget": {
+            "name": "palette"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixel_art",
+          "type": "IMAGE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "preview",
+          "type": "IMAGE",
+          "links": [
+            21
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": [
+            19
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Pixelize"
+      },
+      "widgets_values": [
+        64,
+        "image height",
+        "median",
+        0.6,
+        6,
+        16.0,
+        "auto",
+        true,
+        "keep",
+        12.0,
+        true,
+        false,
+        "none",
+        0,
+        4
+      ],
+      "title": "Pixelize (texture)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 14,
+      "type": "MakeTileable",
+      "pos": [
+        1620,
+        0
+      ],
+      "size": [
+        340,
+        160
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tile",
+          "type": "IMAGE",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "preview",
+          "type": "IMAGE",
+          "links": [
+            18
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MakeTileable"
+      },
+      "widgets_values": [
+        32,
+        0,
+        3,
+        4
+      ],
+      "title": "Make Tileable",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 15,
+      "type": "SaveImage",
+      "pos": [
+        2000,
+        0
+      ],
+      "size": [
+        300,
+        300
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 17
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/tile"
+      ],
+      "title": "Save tile (native size)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 16,
+      "type": "SaveImage",
+      "pos": [
+        2000,
+        340
+      ],
+      "size": [
+        400,
+        440
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 18
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/tile_preview"
+      ],
+      "title": "Save 3x3 preview"
+    },
+    {
+      "id": 17,
+      "type": "PreviewAny",
+      "pos": [
+        1620,
+        220
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 19
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Palette"
+    },
+    {
+      "id": 18,
+      "type": "Note",
+      "pos": [
+        0,
+        600
+      ],
+      "size": [
+        380,
+        300
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Prompt -> seamless pixel tile\n\n1. Pixel Art Prompt (green): describe the TERRAIN (\"grass with flowers\", \"cobblestone path\", \"shallow water\",\n   \"dungeon floor bricks\"). Style is \"terrain tile (seamless)\".\n2. Pixelize makes a 64x64 art-px texture (palette: auto, or paste the palette of another tile so a\n   whole tileset matches). Make Tileable cuts a 32x32 tile that repeats without seams.\nSaved to output/pixel/tile_*.png (tile) and tile_preview_*.png (3x3 repeat, x4)."
+      ],
+      "title": "READ ME"
+    },
+    {
+      "id": 19,
+      "type": "SaveImage",
+      "pos": [
+        1220,
+        500
+      ],
+      "size": [
+        360,
+        360
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/tile_texture_raw"
+      ],
+      "title": "Save raw texture"
+    },
+    {
+      "id": 20,
+      "type": "SaveImage",
+      "pos": [
+        1620,
+        400
+      ],
+      "size": [
+        340,
+        360
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/tile_texture"
+      ],
+      "title": "Save pixel texture (x4)"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "MODEL"
+    ],
+    [
+      3,
+      3,
+      0,
+      11,
+      0,
+      "MODEL"
+    ],
+    [
+      4,
+      4,
+      0,
+      8,
+      0,
+      "CLIP"
+    ],
+    [
+      5,
+      6,
+      0,
+      8,
+      1,
+      "STRING"
+    ],
+    [
+      6,
+      6,
+      0,
+      7,
+      0,
+      "STRING"
+    ],
+    [
+      7,
+      6,
+      2,
+      13,
+      1,
+      "INT"
+    ],
+    [
+      8,
+      6,
+      3,
+      13,
+      2,
+      "STRING"
+    ],
+    [
+      9,
+      8,
+      0,
+      9,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      8,
+      0,
+      11,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      9,
+      0,
+      11,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      12,
+      10,
+      0,
+      11,
+      3,
+      "LATENT"
+    ],
+    [
+      13,
+      11,
+      0,
+      12,
+      0,
+      "LATENT"
+    ],
+    [
+      14,
+      5,
+      0,
+      12,
+      1,
+      "VAE"
+    ],
+    [
+      15,
+      12,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      16,
+      13,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      17,
+      14,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      14,
+      1,
+      16,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      13,
+      2,
+      17,
+      0,
+      "STRING"
+    ],
+    [
+      20,
+      12,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      21,
+      13,
+      1,
+      20,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Z-Image Turbo",
+      "bounding": [
+        -20,
+        -60,
+        1220,
+        700
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        40,
+        520
+      ]
+    },
+    "linearMode": true,
+    "linearData": {
+      "inputs": [
+        [
+          "6",
+          "subject"
+        ],
+        [
+          "6",
+          "palette"
+        ],
+        [
+          "14",
+          "tile_size"
+        ],
+        [
+          "11",
+          "seed"
+        ]
+      ],
+      "outputs": [
+        "15",
+        "16",
+        "17"
+      ]
+    }
+  },
+  "version": 0.4
+}

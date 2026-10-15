@@ -1,0 +1,1267 @@
+{
+  "id": "64bdc50c-f6d4-5fc1-8e82-42f71f8419a6",
+  "revision": 0,
+  "last_node_id": 40,
+  "last_link_id": 25,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        300,
+        320
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Target image",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        360
+      ],
+      "size": [
+        300,
+        320
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Reference 1",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 3,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        720
+      ],
+      "size": [
+        300,
+        320
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Reference 2",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 4,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        1080
+      ],
+      "size": [
+        300,
+        320
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Reference 3",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 20,
+      "type": "UNETLoader",
+      "pos": [
+        340,
+        0
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "title": "Qwen-Image-2.1"
+    },
+    {
+      "id": 21,
+      "type": "QwenImage21Cache",
+      "pos": [
+        340,
+        120
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "QwenImage21Cache"
+      },
+      "widgets_values": [
+        "auto",
+        "default"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "CLIPLoader",
+      "pos": [
+        340,
+        240
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "title": "Qwen3-VL text encoder"
+    },
+    {
+      "id": 23,
+      "type": "VAELoader",
+      "pos": [
+        340,
+        390
+      ],
+      "size": [
+        340,
+        58
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            3,
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ]
+    },
+    {
+      "id": 24,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        720,
+        0
+      ],
+      "size": [
+        440,
+        300
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 3
+        },
+        {
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "images.image_2",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "name": "images.image_3",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "name": "images.image_4",
+          "type": "IMAGE",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            11
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21"
+      },
+      "widgets_values": [
+        "<image1> is the side view (facing right) of the same character shown in <image2> and <image3>. Edit <image1> so he holds the long shovel exactly like in <image2>: vertical at his side, gripped near the top of the handle, the blade resting on the ground. Keep the side view, pose, proportions, colours and style of <image1>; plain white background.",
+        "",
+        1024
+      ],
+      "title": "Edit prompt (with references)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 25,
+      "type": "KSampler",
+      "pos": [
+        720,
+        340
+      ],
+      "size": [
+        320,
+        262
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 8
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 9
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        7,
+        "randomize",
+        25,
+        1.0,
+        "euler",
+        "simple",
+        1.0
+      ],
+      "title": "Qwen edit"
+    },
+    {
+      "id": 26,
+      "type": "VAEDecode",
+      "pos": [
+        720,
+        640
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 12
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14,
+            16,
+            18
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 27,
+      "type": "SaveImage",
+      "pos": [
+        720,
+        720
+      ],
+      "size": [
+        320,
+        360
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/sprite_edit_ref_full"
+      ],
+      "title": "Save edited image (full res)"
+    },
+    {
+      "id": 30,
+      "type": "LoadBackgroundRemovalModel",
+      "pos": [
+        1200,
+        0
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "bg_model",
+          "type": "BACKGROUND_REMOVAL",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadBackgroundRemovalModel",
+        "models": [
+          {
+            "name": "birefnet.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+            "directory": "background_removal"
+          }
+        ]
+      },
+      "widgets_values": [
+        "birefnet.safetensors"
+      ],
+      "title": "BiRefNet"
+    },
+    {
+      "id": 31,
+      "type": "RemoveBackground",
+      "pos": [
+        1200,
+        100
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "bg_removal_model",
+          "type": "BACKGROUND_REMOVAL",
+          "link": 15
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RemoveBackground"
+      }
+    },
+    {
+      "id": 32,
+      "type": "InvertMask",
+      "pos": [
+        1200,
+        180
+      ],
+      "size": [
+        320,
+        26
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            19
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      }
+    },
+    {
+      "id": 33,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        1200,
+        250
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 18
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            20
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "Remove background"
+    },
+    {
+      "id": 34,
+      "type": "CleanCutout",
+      "pos": [
+        1200,
+        330
+      ],
+      "size": [
+        320,
+        160
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "removed",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CleanCutout"
+      },
+      "widgets_values": [
+        true,
+        false,
+        0.02,
+        8.0,
+        0.2
+      ],
+      "title": "Clean cutout"
+    },
+    {
+      "id": 35,
+      "type": "Pixelize",
+      "pos": [
+        1560,
+        0
+      ],
+      "size": [
+        360,
+        440
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixel_art",
+          "type": "IMAGE",
+          "links": [
+            22,
+            24
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "preview",
+          "type": "IMAGE",
+          "links": [
+            23
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Pixelize"
+      },
+      "widgets_values": [
+        64,
+        "body height (per frame)",
+        "pixeloe",
+        0.0,
+        0,
+        20.0,
+        "auto",
+        true,
+        "auto remove",
+        12.0,
+        true,
+        true,
+        "auto",
+        1,
+        8
+      ],
+      "title": "Pixelize (match the set)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 36,
+      "type": "SaveImage",
+      "pos": [
+        1960,
+        0
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 22
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/sprite_edit_ref"
+      ],
+      "title": "Save pixel sprite",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 37,
+      "type": "SaveImage",
+      "pos": [
+        1960,
+        340
+      ],
+      "size": [
+        320,
+        400
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/sprite_edit_ref_x8"
+      ],
+      "title": "Save preview (x8)"
+    },
+    {
+      "id": 38,
+      "type": "PixelArtCheck",
+      "pos": [
+        1560,
+        490
+      ],
+      "size": [
+        360,
+        106
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            25
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "passed",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixelArtCheck"
+      },
+      "widgets_values": [
+        64,
+        0,
+        true
+      ],
+      "title": "Pixel Art Check"
+    },
+    {
+      "id": 39,
+      "type": "PreviewAny",
+      "pos": [
+        1560,
+        640
+      ],
+      "size": [
+        360,
+        200
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 25
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Check report"
+    },
+    {
+      "id": 40,
+      "type": "Note",
+      "pos": [
+        340,
+        500
+      ],
+      "size": [
+        340,
+        420
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Sprite edit with references (context-aware)\n\n1. Target (blue): the image to change, best at full resolution (e.g. the original drawing of one direction).\n2. References 1-3 (blue): other images of the same character (other directions, concept art). Unused ones can be\n   bypassed (Ctrl+B).\n3. Edit prompt (green): refer to the images as <image1> (target), <image2>, <image3>, <image4> (references):\n   \"make him hold the shovel exactly like in <image2>\", \"copy the hat from <image3>\".\n4. Pixelize (yellow): set pixels (body height) and palette to the sprite set's so the result fits back in.\nSaved: output/pixel/sprite_edit_ref_*.png (native), _x8 preview, and the edited full-res image."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      20,
+      0,
+      21,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      22,
+      0,
+      24,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      23,
+      0,
+      24,
+      1,
+      "VAE"
+    ],
+    [
+      4,
+      1,
+      0,
+      24,
+      2,
+      "IMAGE"
+    ],
+    [
+      5,
+      2,
+      0,
+      24,
+      3,
+      "IMAGE"
+    ],
+    [
+      6,
+      3,
+      0,
+      24,
+      4,
+      "IMAGE"
+    ],
+    [
+      7,
+      4,
+      0,
+      24,
+      5,
+      "IMAGE"
+    ],
+    [
+      8,
+      21,
+      0,
+      25,
+      0,
+      "MODEL"
+    ],
+    [
+      9,
+      24,
+      0,
+      25,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      24,
+      1,
+      25,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      24,
+      2,
+      25,
+      3,
+      "LATENT"
+    ],
+    [
+      12,
+      25,
+      0,
+      26,
+      0,
+      "LATENT"
+    ],
+    [
+      13,
+      23,
+      0,
+      26,
+      1,
+      "VAE"
+    ],
+    [
+      14,
+      26,
+      0,
+      27,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      30,
+      0,
+      31,
+      0,
+      "BACKGROUND_REMOVAL"
+    ],
+    [
+      16,
+      26,
+      0,
+      31,
+      1,
+      "IMAGE"
+    ],
+    [
+      17,
+      31,
+      0,
+      32,
+      0,
+      "MASK"
+    ],
+    [
+      18,
+      26,
+      0,
+      33,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      32,
+      0,
+      33,
+      1,
+      "MASK"
+    ],
+    [
+      20,
+      33,
+      0,
+      34,
+      0,
+      "IMAGE"
+    ],
+    [
+      21,
+      34,
+      0,
+      35,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      35,
+      0,
+      36,
+      0,
+      "IMAGE"
+    ],
+    [
+      23,
+      35,
+      1,
+      37,
+      0,
+      "IMAGE"
+    ],
+    [
+      24,
+      35,
+      0,
+      38,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      38,
+      0,
+      39,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Qwen-Image-2.1 edit with references",
+      "bounding": [
+        320,
+        -60,
+        860,
+        1000
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Back to the set's pixels",
+      "bounding": [
+        1180,
+        -60,
+        1120,
+        920
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5,
+      "offset": [
+        40,
+        80
+      ]
+    },
+    "linearMode": true,
+    "linearData": {
+      "inputs": [
+        [
+          "1",
+          "image"
+        ],
+        [
+          "2",
+          "image"
+        ],
+        [
+          "3",
+          "image"
+        ],
+        [
+          "24",
+          "prompt"
+        ],
+        [
+          "25",
+          "seed"
+        ],
+        [
+          "35",
+          "pixels"
+        ],
+        [
+          "35",
+          "palette"
+        ]
+      ],
+      "outputs": [
+        "36",
+        "37",
+        "39"
+      ]
+    }
+  },
+  "version": 0.4
+}

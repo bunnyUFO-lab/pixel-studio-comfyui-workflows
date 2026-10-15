@@ -1,0 +1,10 @@
+# Custom nodes baked into the image: "<git-url> <commit-sha>" per line.
+# Add a node here (and rebuild) to keep it; nodes installed from the Manager UI
+# are lost when the container is recreated.
+# ComfyUI-Manager is built into ComfyUI (manager_requirements.txt + --enable-manager), so it is not listed.
+
+# MP4 output (VHS_VideoCombine) - used by wan22-remix
+https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite 4d907bee61e92c2e65af3bd6383a4e4d356126d1
+
+# Raster -> SVG with VTracer (TS_* nodes) - used by image-to-svg/vtracer-svg
+https://github.com/Yanick112/ComfyUI-ToSVG 1022ba05318dccb4fe586ce5bbd09f1f0b3c7909

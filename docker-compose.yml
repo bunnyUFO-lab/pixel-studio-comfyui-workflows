@@ -1,0 +1,77 @@
+# ComfyUI with the Pixel Studio workflows and nodes. Pixel Studio (a separate app) connects to it as a
+# compute source at http://<this machine>:8188.
+name: comfyui
+
+services:
+  comfyui:
+    build:
+      context: ./docker
+      args:
+        COMFYUI_REF: ${COMFYUI_REF:-v0.38.2}
+    image: comfyui-local:${COMFYUI_REF:-v0.38.2}
+    pull_policy: build
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${PORT:-8188}:8188"
+    environment:
+      MODELS: ${MODELS:-}        # workflows whose models are fetched on start (from the .env preset)
+      COMFY_ARGS: ${COMFY_ARGS:-}
+    env_file:                    # credentials (CIVITAI_TOKEN, HF_TOKEN), see .secrets.env.example
+      - path: .secrets.env
+        required: false
+    shm_size: 8gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - models:/opt/ComfyUI/models          # named volume: fast (WSL2 ext4), survives rebuilds
+      - user:/opt/ComfyUI/user              # UI settings
+      - ./workflows:/opt/ComfyUI/user/default/workflows   # git-tracked workflows
+      - ./custom_nodes/comfyui_workflows_utils:/opt/ComfyUI/custom_nodes/comfyui_workflows_utils:ro   # repo's own nodes
+      - ${COMFY_INPUT_DIR:-./input}:/opt/ComfyUI/input       # set in .env to keep inputs/outputs on another drive
+      - ${COMFY_OUTPUT_DIR:-./output}:/opt/ComfyUI/output
+
+  # Style LoRA trainer (ostris ai-toolkit), on demand only: docker compose --profile train up -d trainer
+  # Pixel Studio writes datasets and configs into TRAIN_DIR and reads the output back, so TRAIN_DIR must be
+  # the same folder as the app's <data>/train (both on this machine). See trainer/README.md.
+  # First start downloads the image (~6.6 GB) and the Z-Image Turbo training files. See trainer/README.md.
+  trainer:
+    image: ostris/aitoolkit:0.13.23
+    profiles: ["train"]
+    command: ["python", "/runner/runner.py"]
+    working_dir: /app/ai-toolkit
+    ports:
+      - "127.0.0.1:8675:8675"
+    environment:
+      RUNNER_PORT: "8675"
+      CONFIG_ROOT: /workspace/configs
+      OUTPUT_ROOT: /workspace/output
+      HF_HOME: /root/.cache/huggingface
+      PYTHONUNBUFFERED: "1"
+    env_file:
+      - path: .secrets.env                 # optional HF_TOKEN (the base model and adapter are public)
+        required: false
+    shm_size: 8gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./trainer:/runner:ro
+      - ${TRAIN_DIR:-./train}/datasets:/workspace/datasets
+      - ${TRAIN_DIR:-./train}/output:/workspace/output
+      - ${TRAIN_DIR:-./train}/configs:/workspace/configs
+      - ${TRAINER_CACHE_DIR:-hf_cache}:/root/.cache/huggingface   # base model files (~33 GB); set TRAINER_CACHE_DIR in .env to keep them on another drive
+    restart: "no"
+
+volumes:
+  models:
+  user:
+  hf_cache:

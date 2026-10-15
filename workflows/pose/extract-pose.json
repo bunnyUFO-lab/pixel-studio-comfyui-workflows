@@ -1,0 +1,389 @@
+{
+  "id": "116e6eeb-23af-572c-9b33-5401a371e4c9",
+  "revision": 0,
+  "last_node_id": 7,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        380,
+        98
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": []
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            2
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple",
+        "models": [
+          {
+            "name": "sdpose_wholebody_fp16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/SDPose/resolve/main/checkpoints/sdpose_wholebody_fp16.safetensors",
+            "directory": "checkpoints"
+          }
+        ]
+      },
+      "widgets_values": [
+        "sdpose_wholebody_fp16.safetensors"
+      ],
+      "title": "SDPose model"
+    },
+    {
+      "id": 2,
+      "type": "VHS_LoadVideo",
+      "pos": [
+        0,
+        160
+      ],
+      "size": [
+        380,
+        420
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": []
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadVideo",
+        "cnr_id": "comfyui-videohelpersuite"
+      },
+      "widgets_values": {
+        "video": "example.gif",
+        "force_rate": 0,
+        "custom_width": 0,
+        "custom_height": 0,
+        "frame_load_cap": 16,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "AnimateDiff",
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {}
+        }
+      },
+      "title": "Clip",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 3,
+      "type": "SDPoseKeypointExtractor",
+      "pos": [
+        420,
+        0
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 2
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "POSE_KEYPOINT",
+          "type": "POSE_KEYPOINT",
+          "links": [
+            4,
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SDPoseKeypointExtractor"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Find keypoints",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 4,
+      "type": "SDPoseDrawKeypoints",
+      "pos": [
+        420,
+        180
+      ],
+      "size": [
+        340,
+        260
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "keypoints",
+          "type": "POSE_KEYPOINT",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SDPoseDrawKeypoints"
+      },
+      "widgets_values": [
+        true,
+        true,
+        false,
+        true,
+        4,
+        3,
+        0.3,
+        true
+      ],
+      "title": "Draw skeletons"
+    },
+    {
+      "id": 5,
+      "type": "SaveImage",
+      "pos": [
+        800,
+        180
+      ],
+      "size": [
+        360,
+        360
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pose/skeleton"
+      ],
+      "title": "Pose images",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 6,
+      "type": "PreviewAny",
+      "pos": [
+        800,
+        0
+      ],
+      "size": [
+        360,
+        140
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 6
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Keypoints"
+    },
+    {
+      "id": 7,
+      "type": "Note",
+      "pos": [
+        0,
+        640
+      ],
+      "size": [
+        520,
+        260
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Picture or clip -> pose skeletons (SDPose)\n\n1. Clip (blue): a GIF or video of a figure (a picture works as a one-frame GIF). frame_load_cap = how many frames,\n   select_every_nth to skip frames.\n2. SDPose finds the whole-body keypoints (body, hands, feet, face) of the main figure in each frame.\n3. 'Pose images' = the skeletons drawn OpenPose-style (the same kind of picture pose-guided video models such as\n   Wan VACE follow); 'Keypoints' = the same as JSON.\nModel: Comfy-Org/SDPose sdpose_wholebody_fp16 (1.9 GB) in models/checkpoints."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      1,
+      2,
+      3,
+      1,
+      "VAE"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      2,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "POSE_KEYPOINT"
+    ],
+    [
+      5,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      3,
+      0,
+      6,
+      0,
+      "POSE_KEYPOINT"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Pose skeletons (SDPose)",
+      "bounding": [
+        -20,
+        -60,
+        1200,
+        640
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.75,
+      "offset": [
+        60,
+        120
+      ]
+    }
+  },
+  "version": 0.4
+}

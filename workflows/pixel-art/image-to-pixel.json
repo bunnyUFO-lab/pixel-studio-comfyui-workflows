@@ -1,0 +1,707 @@
+{
+  "id": "9f8e3c47-2404-56a1-b561-2097c97d80bc",
+  "revision": 0,
+  "last_node_id": 14,
+  "last_link_id": 14,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        400,
+        440
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2,
+            4
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            3
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Input image",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 13,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        0,
+        440
+      ],
+      "size": [
+        400,
+        46
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "Keep input transparency"
+    },
+    {
+      "id": 2,
+      "type": "LoadBackgroundRemovalModel",
+      "pos": [
+        440,
+        0
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "bg_model",
+          "type": "BACKGROUND_REMOVAL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadBackgroundRemovalModel",
+        "models": [
+          {
+            "name": "birefnet.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+            "directory": "background_removal"
+          }
+        ]
+      },
+      "widgets_values": [
+        "birefnet.safetensors"
+      ],
+      "title": "BiRefNet"
+    },
+    {
+      "id": 3,
+      "type": "RemoveBackground",
+      "pos": [
+        440,
+        100
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "bg_removal_model",
+          "type": "BACKGROUND_REMOVAL",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RemoveBackground"
+      }
+    },
+    {
+      "id": 4,
+      "type": "InvertMask",
+      "pos": [
+        440,
+        180
+      ],
+      "size": [
+        320,
+        26
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      }
+    },
+    {
+      "id": 5,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        440,
+        250
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "Remove background (Ctrl+B to skip)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 14,
+      "type": "CleanCutout",
+      "pos": [
+        440,
+        330
+      ],
+      "size": [
+        320,
+        160
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "removed",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CleanCutout"
+      },
+      "widgets_values": [
+        true,
+        false,
+        0.02,
+        8.0,
+        0.2
+      ],
+      "title": "Clean cutout (drop shadow, background pockets)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 6,
+      "type": "Pixelize",
+      "pos": [
+        800,
+        0
+      ],
+      "size": [
+        360,
+        420
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixel_art",
+          "type": "IMAGE",
+          "links": [
+            10,
+            12
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "preview",
+          "type": "IMAGE",
+          "links": [
+            11
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": [
+            14
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Pixelize"
+      },
+      "widgets_values": [
+        64,
+        "subject height",
+        "pixeloe",
+        0.6,
+        0,
+        12.0,
+        "auto",
+        true,
+        "auto remove",
+        12.0,
+        true,
+        true,
+        "auto",
+        1,
+        8
+      ],
+      "title": "Pixelize",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 7,
+      "type": "SaveImage",
+      "pos": [
+        1200,
+        0
+      ],
+      "size": [
+        360,
+        300
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/image_to_pixel"
+      ],
+      "title": "Save pixel art (native size)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 8,
+      "type": "SaveImage",
+      "pos": [
+        1200,
+        340
+      ],
+      "size": [
+        360,
+        420
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/image_to_pixel_x8"
+      ],
+      "title": "Save preview (x8)"
+    },
+    {
+      "id": 9,
+      "type": "PixelArtCheck",
+      "pos": [
+        800,
+        470
+      ],
+      "size": [
+        360,
+        106
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "passed",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixelArtCheck"
+      },
+      "widgets_values": [
+        32,
+        64,
+        true
+      ],
+      "title": "Pixel Art Check"
+    },
+    {
+      "id": 10,
+      "type": "PreviewAny",
+      "pos": [
+        800,
+        620
+      ],
+      "size": [
+        360,
+        200
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 13
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Check report"
+    },
+    {
+      "id": 11,
+      "type": "PreviewAny",
+      "pos": [
+        1200,
+        800
+      ],
+      "size": [
+        360,
+        160
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 14
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Palette"
+    },
+    {
+      "id": 12,
+      "type": "Note",
+      "pos": [
+        0,
+        530
+      ],
+      "size": [
+        460,
+        470
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Image -> true pixel art\n\n1. Load an image (blue): a character or object. Any background: BiRefNet removes it.\n   Art that's already on a plain/transparent background or already pixel art: bypass\n   \"Remove background\" (select it, Ctrl+B) to skip the AI cut-out.\n2. Pixelize (yellow):\n   pixels  = size in art pixels (default: subject height 64)\n   measure = what 'pixels' means; 'auto (detect grid)' recovers existing (upscaled) pixel art exactly\n   colors = 0: automatic, the FEWEST colours that keep the look (color_error: higher = fewer); or a number,\n   palette = a preset (PICO-8, DB32, Endesga-32, GameBoy) or hex list\n   method: pixeloe = PixelOE's contrast-aware pixelization (cleanest for illustrations)\n   smooth  = flattens texture/noise into solid areas first (0 = off, 1+ = flatter, fewer details)\n   cleanup removes stray single pixels (eyes are kept); edge_cleanup defringes the edges (no light halo colours)\n   and smooths the silhouette; outline: auto completes the dark outline (or uses darker shades), darkest = black\n   Clean cutout removes a drop shadow under the subject and background seen through gaps (toggles).\n3. Run. Saved to output/pixel/:\n   image_to_pixel_*.png  native size (1 art pixel = 1 image pixel, transparent background) -> use in games\n   image_to_pixel_x8_*.png  zoomed preview\n\"Pixel Art Check\" must say PASS (hard alpha, native x1, palette size)."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      3,
+      0,
+      "BACKGROUND_REMOVAL"
+    ],
+    [
+      2,
+      1,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      1,
+      13,
+      1,
+      "MASK"
+    ],
+    [
+      4,
+      1,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      0,
+      "MASK"
+    ],
+    [
+      6,
+      13,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      4,
+      0,
+      5,
+      1,
+      "MASK"
+    ],
+    [
+      8,
+      5,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      14,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      6,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      6,
+      1,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
+      6,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      13,
+      9,
+      0,
+      10,
+      0,
+      "STRING"
+    ],
+    [
+      14,
+      6,
+      2,
+      11,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Background removal (BiRefNet)",
+      "bounding": [
+        420,
+        -60,
+        360,
+        380
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.75,
+      "offset": [
+        40,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}

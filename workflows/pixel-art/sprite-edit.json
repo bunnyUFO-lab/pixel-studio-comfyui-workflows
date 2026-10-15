@@ -1,0 +1,1085 @@
+{
+  "id": "50ab1e7e-629d-5e60-8ee8-917ca21f9c8d",
+  "revision": 0,
+  "last_node_id": 35,
+  "last_link_id": 23,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        380,
+        400
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            2
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Pixel sprite",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 2,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        0,
+        440
+      ],
+      "size": [
+        380,
+        46
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "Keep sprite transparency"
+    },
+    {
+      "id": 3,
+      "type": "PrepareSpriteForVideo",
+      "pos": [
+        420,
+        0
+      ],
+      "size": [
+        340,
+        130
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "sprite",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "pixel_spec",
+          "type": "PIXEL_SPEC",
+          "links": [
+            15,
+            17
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrepareSpriteForVideo"
+      },
+      "widgets_values": [
+        1024,
+        0.25,
+        "auto"
+      ],
+      "title": "Prepare sprite (integer upscale)"
+    },
+    {
+      "id": 20,
+      "type": "UNETLoader",
+      "pos": [
+        420,
+        180
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "title": "Qwen-Image-2.1"
+    },
+    {
+      "id": 21,
+      "type": "QwenImage21Cache",
+      "pos": [
+        420,
+        300
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "QwenImage21Cache"
+      },
+      "widgets_values": [
+        "auto",
+        "default"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "CLIPLoader",
+      "pos": [
+        420,
+        420
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "title": "Qwen3-VL text encoder"
+    },
+    {
+      "id": 23,
+      "type": "VAELoader",
+      "pos": [
+        420,
+        570
+      ],
+      "size": [
+        340,
+        58
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            6,
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ]
+    },
+    {
+      "id": 24,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        800,
+        0
+      ],
+      "size": [
+        440,
+        260
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 5
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            11
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21"
+      },
+      "widgets_values": [
+        "Give the character in <image1> a red scarf. Keep everything else exactly the same, same pose, same style.",
+        "",
+        1024
+      ],
+      "title": "Edit prompt",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 25,
+      "type": "KSampler",
+      "pos": [
+        800,
+        300
+      ],
+      "size": [
+        320,
+        262
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 8
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 9
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        7,
+        "randomize",
+        25,
+        1.0,
+        "euler",
+        "simple",
+        1.0
+      ],
+      "title": "Qwen edit"
+    },
+    {
+      "id": 26,
+      "type": "VAEDecode",
+      "pos": [
+        800,
+        600
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 12
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 27,
+      "type": "RepixelateFrames",
+      "pos": [
+        1280,
+        0
+      ],
+      "size": [
+        340,
+        250
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "name": "pixel_spec",
+          "type": "PIXEL_SPEC",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixel_frames",
+          "type": "IMAGE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": [
+            23
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RepixelateFrames"
+      },
+      "widgets_values": [
+        false,
+        18.0,
+        "dominant",
+        6,
+        "sprite+new",
+        0.0,
+        false,
+        true,
+        "auto"
+      ],
+      "title": "Repixelate (same grid)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 28,
+      "type": "RestoreSpriteCanvas",
+      "pos": [
+        1280,
+        300
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 16
+        },
+        {
+          "name": "pixel_spec",
+          "type": "PIXEL_SPEC",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "links": [
+            18,
+            19,
+            21
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RestoreSpriteCanvas"
+      },
+      "widgets_values": [
+        "original canvas"
+      ],
+      "title": "Restore canvas",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 29,
+      "type": "SaveImage",
+      "pos": [
+        1660,
+        0
+      ],
+      "size": [
+        360,
+        320
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 18
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/sprite_edit"
+      ],
+      "title": "Save edited sprite (native size)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 30,
+      "type": "ImageScaleBy",
+      "pos": [
+        1660,
+        360
+      ],
+      "size": [
+        300,
+        82
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            20
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScaleBy"
+      },
+      "widgets_values": [
+        "nearest-exact",
+        8.0
+      ],
+      "title": "Zoom x8"
+    },
+    {
+      "id": 31,
+      "type": "SaveImage",
+      "pos": [
+        1660,
+        480
+      ],
+      "size": [
+        360,
+        400
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/sprite_edit_x8"
+      ],
+      "title": "Save preview (x8)"
+    },
+    {
+      "id": 32,
+      "type": "PixelArtCheck",
+      "pos": [
+        1280,
+        430
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "passed",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixelArtCheck"
+      },
+      "widgets_values": [
+        64,
+        0,
+        true
+      ],
+      "title": "Pixel Art Check"
+    },
+    {
+      "id": 33,
+      "type": "PreviewAny",
+      "pos": [
+        1280,
+        580
+      ],
+      "size": [
+        340,
+        200
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 22
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Check report"
+    },
+    {
+      "id": 34,
+      "type": "PreviewAny",
+      "pos": [
+        1280,
+        820
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 23
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Palette"
+    },
+    {
+      "id": 35,
+      "type": "Note",
+      "pos": [
+        0,
+        520
+      ],
+      "size": [
+        380,
+        380
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Sprite edit (keeps the exact pixel grid)\n\n1. Load a pixel sprite (blue), native size or upscaled; a batch of frames works too (each edited the same way).\n2. Edit prompt (green): an instruction about <image1> (\"give him a red scarf\", \"make the cape torn\",\n   \"remove the hat\"). Say \"keep everything else the same\".\n3. Qwen-Image-2.1 edits a x16-ish upscale, then the result is re-pixelated on the sprite's own grid:\n   palette 'sprite+new' = the sprite's colours plus up to 'colors' new ones the edit adds; 'sprite' = locked.\n4. Restore: 'original canvas' = same size and position as the input (drop-in replacement, e.g. sheet frames).\nSaved to output/pixel/sprite_edit_*.png (+ _x8 preview). ~30-40 s per frame."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      1,
+      "MASK"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      20,
+      0,
+      21,
+      0,
+      "MODEL"
+    ],
+    [
+      5,
+      22,
+      0,
+      24,
+      0,
+      "CLIP"
+    ],
+    [
+      6,
+      23,
+      0,
+      24,
+      1,
+      "VAE"
+    ],
+    [
+      7,
+      3,
+      0,
+      24,
+      2,
+      "IMAGE"
+    ],
+    [
+      8,
+      21,
+      0,
+      25,
+      0,
+      "MODEL"
+    ],
+    [
+      9,
+      24,
+      0,
+      25,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      24,
+      1,
+      25,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      24,
+      2,
+      25,
+      3,
+      "LATENT"
+    ],
+    [
+      12,
+      25,
+      0,
+      26,
+      0,
+      "LATENT"
+    ],
+    [
+      13,
+      23,
+      0,
+      26,
+      1,
+      "VAE"
+    ],
+    [
+      14,
+      26,
+      0,
+      27,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      3,
+      1,
+      27,
+      1,
+      "PIXEL_SPEC"
+    ],
+    [
+      16,
+      27,
+      0,
+      28,
+      0,
+      "IMAGE"
+    ],
+    [
+      17,
+      3,
+      1,
+      28,
+      1,
+      "PIXEL_SPEC"
+    ],
+    [
+      18,
+      28,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      28,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      20,
+      30,
+      0,
+      31,
+      0,
+      "IMAGE"
+    ],
+    [
+      21,
+      28,
+      0,
+      32,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      32,
+      0,
+      33,
+      0,
+      "STRING"
+    ],
+    [
+      23,
+      27,
+      2,
+      34,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Qwen-Image-2.1 edit",
+      "bounding": [
+        400,
+        -60,
+        860,
+        720
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Back to the same grid",
+      "bounding": [
+        1260,
+        -60,
+        780,
+        1040
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        40,
+        80
+      ]
+    },
+    "linearMode": true,
+    "linearData": {
+      "inputs": [
+        [
+          "1",
+          "image"
+        ],
+        [
+          "24",
+          "prompt"
+        ],
+        [
+          "25",
+          "seed"
+        ],
+        [
+          "27",
+          "palette"
+        ],
+        [
+          "27",
+          "colors"
+        ],
+        [
+          "28",
+          "mode"
+        ]
+      ],
+      "outputs": [
+        "29",
+        "31",
+        "33"
+      ]
+    }
+  },
+  "version": 0.4
+}

@@ -1,0 +1,4 @@
+# Extra pip packages for this repo's own nodes (custom_nodes/comfyui_workflows_utils), installed with --no-deps
+# because their real dependencies (opencv, numpy, torch, Pillow, kornia) are already in the image.
+# PixelOE (Apache-2.0): contrast-aware pixelization used by the Pixelize node (method = pixeloe).
+pixeloe==1.0.0

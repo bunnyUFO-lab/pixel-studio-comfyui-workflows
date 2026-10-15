@@ -1,0 +1,11 @@
+.env
+.secrets.env
+input/
+output/
+__pycache__/
+*.stackdump
+/train/
+
+# local dev-server configs (machine-specific paths)
+.claude/launch.json
+

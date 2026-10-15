@@ -1,0 +1,741 @@
+{
+  "id": "cab90953-7b2d-520e-9a08-223daa2503a2",
+  "revision": 0,
+  "last_node_id": 16,
+  "last_link_id": 14,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        400,
+        420
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            4
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Input image",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 12,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        440,
+        0
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader",
+        "models": [
+          {
+            "name": "RealESRGAN_x4plus_anime_6B.pth",
+            "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+            "directory": "upscale_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "RealESRGAN_x4plus_anime_6B.pth"
+      ],
+      "title": "AI upscaler (Real-ESRGAN anime)"
+    },
+    {
+      "id": 13,
+      "type": "ImageUpscaleWithModel",
+      "pos": [
+        440,
+        100
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageUpscaleWithModel"
+      },
+      "title": "AI upscale x4 (Ctrl+B to skip)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 2,
+      "type": "ImageScaleToMaxDimension",
+      "pos": [
+        440,
+        190
+      ],
+      "size": [
+        320,
+        82
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScaleToMaxDimension"
+      },
+      "widgets_values": [
+        "lanczos",
+        2048
+      ],
+      "title": "Resize (longest side)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 3,
+      "type": "MaskToImage",
+      "pos": [
+        440,
+        340
+      ],
+      "size": [
+        320,
+        26
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      }
+    },
+    {
+      "id": 4,
+      "type": "ImageScaleToMaxDimension",
+      "pos": [
+        440,
+        410
+      ],
+      "size": [
+        320,
+        82
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScaleToMaxDimension"
+      },
+      "widgets_values": [
+        "lanczos",
+        2048
+      ],
+      "title": "Resize mask (keep = image)"
+    },
+    {
+      "id": 5,
+      "type": "ImageToMask",
+      "pos": [
+        440,
+        540
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageToMask"
+      },
+      "widgets_values": [
+        "red"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "ThresholdMask",
+      "pos": [
+        440,
+        640
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ThresholdMask"
+      },
+      "widgets_values": [
+        0.5
+      ],
+      "title": "Hard transparency edge"
+    },
+    {
+      "id": 7,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        440,
+        740
+      ],
+      "size": [
+        320,
+        46
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "Apply transparency"
+    },
+    {
+      "id": 8,
+      "type": "LayeredVectorize",
+      "pos": [
+        800,
+        0
+      ],
+      "size": [
+        360,
+        520
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "links": [
+            11,
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LayeredVectorize"
+      },
+      "widgets_values": [
+        6,
+        "",
+        2000,
+        22,
+        6.0,
+        25.0,
+        60,
+        0.3,
+        0.35,
+        1.1,
+        "per region",
+        true,
+        true,
+        true,
+        true,
+        true,
+        "stacked",
+        2,
+        0,
+        0,
+        2,
+        "tinted"
+      ],
+      "title": "Layered Vectorize",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 14,
+      "type": "TS_SVGStringToSVGBytesIO",
+      "pos": [
+        1200,
+        0
+      ],
+      "size": [
+        300,
+        26
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SVG",
+          "type": "SVG",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TS_SVGStringToSVGBytesIO"
+      },
+      "title": "SVG text -> SVG"
+    },
+    {
+      "id": 9,
+      "type": "SaveSVGNode",
+      "pos": [
+        1200,
+        80
+      ],
+      "size": [
+        420,
+        520
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "svg",
+          "type": "SVG",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "svg",
+          "type": "SVG",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveSVGNode"
+      },
+      "widgets_values": [
+        "svg/layered"
+      ],
+      "title": "Save SVG (output/svg/)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 15,
+      "type": "SVGStats",
+      "pos": [
+        1660,
+        0
+      ],
+      "size": [
+        300,
+        70
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "SVG_String",
+          "type": "STRING",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "shapes",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "size_kb",
+          "type": "FLOAT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SVGStats"
+      },
+      "title": "SVG Stats"
+    },
+    {
+      "id": 16,
+      "type": "PreviewAny",
+      "pos": [
+        1660,
+        110
+      ],
+      "size": [
+        340,
+        200
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 14
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Shapes & file size"
+    },
+    {
+      "id": 11,
+      "type": "Note",
+      "pos": [
+        0,
+        470
+      ],
+      "size": [
+        460,
+        620
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Layered SVG - flats + shadows + highlights + ink + details\n\nBuilds the SVG the way an artist would, as named layers (Inkscape/Illustrator show them as layers):\n  Flats       one base colour per region, extended under the ink (no gaps)\n  Shadows     a darker shade of each base colour where the image is darker\n  Highlights  a lighter shade of each base colour where it is lighter\n  Ink         the dark outlines\n  Details     small things the layers above miss (web strands, eyes...)\nSaved to output/svg/layered_NNNNN_.svg; \"Shapes & file size\" shows shapes and base colours\n(shadow/highlight shades are not counted as colours).\n\nPalette: leave empty for 6 automatic colours, or type hex colours\n(e.g. #4f4f52 #8c8c90 #e3d6bb #4b3426) - every flat snaps to the nearest one.\nInk (dark outlines) is detected separately, so you don't need black in the palette.\n\nFewer shapes: raise min_region_px (4000) and detail_min_px (100), or turn details off.\nMore detail: lower min_region_px (1000) and detail_min_px (30), or detail_threshold (18).\nobjects: 'per region' = each region its own shape; 'compound' = one shape per colour/layer.\nMissing outlines: raise ink_threshold (30). Too much ink: lower it (15).\nLine widths: line_min_px / line_max_px clamp ink + detail strokes (e.g. 4 / 8 at 2048px); 0 = off.\nFlats are stacked (biggest colour at the bottom, extending under the others) so there are no gaps.\nTones too busy: raise tone_threshold (10); too flat: lower it (4).\nTransparent PNGs keep transparency; plain opaque backgrounds are removed (remove_background)."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      12,
+      0,
+      13,
+      0,
+      "UPSCALE_MODEL"
+    ],
+    [
+      2,
+      1,
+      0,
+      13,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      13,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      1,
+      1,
+      3,
+      0,
+      "MASK"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      5,
+      0,
+      6,
+      0,
+      "MASK"
+    ],
+    [
+      8,
+      2,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      6,
+      0,
+      7,
+      1,
+      "MASK"
+    ],
+    [
+      10,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      8,
+      0,
+      14,
+      0,
+      "STRING"
+    ],
+    [
+      12,
+      14,
+      0,
+      9,
+      0,
+      "SVG"
+    ],
+    [
+      13,
+      8,
+      0,
+      15,
+      0,
+      "STRING"
+    ],
+    [
+      14,
+      15,
+      0,
+      16,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Transparency",
+      "bounding": [
+        420,
+        310,
+        360,
+        500
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [
+        40,
+        60
+      ]
+    }
+  },
+  "version": 0.4
+}
