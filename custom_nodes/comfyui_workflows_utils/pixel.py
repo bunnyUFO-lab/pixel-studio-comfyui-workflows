@@ -936,7 +936,7 @@ def repixelate(frames_rgb, spec, height_match=False, bg_tolerance=18.0, method="
     for fr in frames_rgb:
         if fr.shape[:2] != (ch * f, cw * f):
             fr = np.asarray(Image.fromarray(fr[..., :3]).resize((cw * f, ch * f), Image.BILINEAR))
-        frames.append(np.concatenate([fr[..., :3], np.full(fr.shape[:2] + (1,), 255, np.uint8)], -1))
+        frames.append(np.concatenate([_rekey_background(fr[..., :3], bg, bg_tolerance, palette), np.full(fr.shape[:2] + (1,), 255, np.uint8)], -1))
     if height_match and frames:
         # one scale for the whole clip, from the first frame (the driving video's start pose), about one fixed
         # anchor: the character gets the sprite's height and motion (steps, crouches, jumps) is kept as is
@@ -977,6 +977,30 @@ def repixelate(frames_rgb, spec, height_match=False, bg_tolerance=18.0, method="
         if cleanup:
             o = cleanup_strays(smooth_silhouette(o))
         out.append(apply_outline(o, palette, outline) if outline not in ("none", "outside darkest") else o)
+    return out
+
+
+def _rekey_background(rgb, bg, tol, palette=None):
+    """The frame's own flat background, painted back to the key colour. Video models drift the background they were
+    given (green turning teal, blue, then purple over a clip); matched against the one key colour, the drifted
+    background reads as sprite colours and comes out as a solid block. So each frame's border-connected background
+    (close to that frame's own border colour) is found and set to the key first. A frame whose border is still the
+    key colour is left as it is, and so is one with no figure in it (all one colour).
+    The flood stops short of the sprite: its tolerance is kept under half the distance from the drifted background to
+    the nearest sprite colour, so a background that drifted towards a body colour does not run into the body."""
+    lab_bg = rgb_to_lab(np.asarray(bg, np.uint8)[None, None])[0, 0]
+    lab = rgb_to_lab(np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])[None])[0]
+    edge = np.median(lab, axis=0)
+    if np.sqrt(((edge - lab_bg) ** 2).sum()) < tol:
+        return rgb
+    if palette is not None and len(palette):
+        near = np.sqrt(((rgb_to_lab(np.asarray(palette, np.uint8)[None])[0] - edge) ** 2).sum(-1)).min()
+        tol = max(3.0, min(tol, near / 2))
+    mask = flood_background(rgb, tol)
+    if mask.mean() < 0.05 or mask.mean() > 0.95:  # no flat border, or nothing but border: not a figure on a background
+        return rgb
+    out = rgb.copy()
+    out[mask] = bg
     return out
 
 
