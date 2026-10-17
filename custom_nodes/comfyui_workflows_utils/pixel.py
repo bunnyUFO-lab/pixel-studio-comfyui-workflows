@@ -815,14 +815,31 @@ class Pixelize:
         return (to_image_tensor(frames), to_image_tensor(preview), palette_to_text(pals[0]), "\n".join(infos))
 
 
-def grid_cutout(native, cutout, coverage=0.5, padding=1, cleanup=False):
+def keyed_background(native):
+    """Cells of the plain background in on-grid pixel art: exactly the most common border colour, connected to the
+    border. The refiner gives a cell on the subject's edge the background colour when most of it was background;
+    the cut-out alone would keep those as a light halo."""
+    from scipy import ndimage
+    rgb = native[..., :3]
+    border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
+    cols, counts = np.unique(border, axis=0, return_counts=True)
+    same = (rgb == cols[counts.argmax()]).all(-1)
+    lbl, _ = ndimage.label(same)
+    edge = np.unique(np.concatenate([lbl[0], lbl[-1], lbl[:, 0], lbl[:, -1]]))
+    return np.isin(lbl, edge[edge > 0])
+
+
+def grid_cutout(native, cutout, coverage=0.5, padding=1, cleanup=False, key_background=True):
     """Pixel art already on its grid (one image pixel per art pixel, opaque) + the full-size cut-out it was made from
-    -> the sprite with hard alpha, trimmed to the subject. A cell is opaque when `coverage` of it is subject."""
+    -> the sprite with hard alpha, trimmed to the subject. A cell is opaque when `coverage` of it is subject and,
+    with key_background, it is not the plain background colour reaching the border."""
     ny, nx = native.shape[:2]
     cell_x, cell_y = cutout.shape[1] / nx, cutout.shape[0] / ny
     if abs(cell_x - cell_y) > 1e-6:
         raise ValueError(f"cut-out {cutout.shape[1]}x{cutout.shape[0]} is not a whole grid of the {nx}x{ny} pixel art")
     keep = coverage_alpha(cutout, cell_x, 0.0, 0.0, nx, ny, coverage)
+    if key_background:
+        keep &= ~keyed_background(native)
     out = native.copy()
     out[..., 3] = np.where(keep, 255, 0)
     out[~keep] = 0
@@ -843,6 +860,8 @@ class GridCutout:
             "padding": ("INT", {"default": 1, "min": 0, "max": 64, "tooltip": "Transparent art pixels around the subject."}),
             "cleanup": ("BOOLEAN", {"default": False, "tooltip": "Remove isolated stray pixels (distinct ones like eyes are kept)."}),
             "preview_scale": ("INT", {"default": 8, "min": 1, "max": 32, "tooltip": "Nearest-neighbour zoom for the preview output."}),
+        }, "optional": {
+            "key_background": ("BOOLEAN", {"default": True, "tooltip": "Also drop cells of the plain background colour that reach the border (the halo the cut-out alone leaves on the subject's edge)."}),
         }}
 
     RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
@@ -851,9 +870,9 @@ class GridCutout:
     CATEGORY = "comfyui_workflows/pixel"
     DESCRIPTION = "Cut a sprite out of pixel art that is already on its grid, using the full-size cut-out's alpha. No resampling and no new colours."
 
-    def run(self, pixel_art, cutout, coverage, padding, cleanup, preview_scale):
+    def run(self, pixel_art, cutout, coverage, padding, cleanup, preview_scale, key_background=True):
         arts, cuts = to_rgba_np(pixel_art), to_rgba_np(cutout)
-        frames = [grid_cutout(a, cuts[min(i, len(cuts) - 1)], coverage, padding, cleanup) for i, a in enumerate(arts)]
+        frames = [grid_cutout(a, cuts[min(i, len(cuts) - 1)], coverage, padding, cleanup, key_background) for i, a in enumerate(arts)]
         frames = pad_to_same_size(frames)
         colours = len(np.unique(frames[0][frames[0][..., 3] > 0][:, :3], axis=0))
         info = f"{frames[0].shape[1]}x{frames[0].shape[0]} art px from a {arts[0].shape[1]}x{arts[0].shape[0]} grid, {colours} colours"

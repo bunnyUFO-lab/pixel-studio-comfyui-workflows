@@ -278,6 +278,13 @@ opaque = sprite[sprite[..., 3] > 0][:, :3]
 check(sprite.shape[:2] == (11, 8) and set(sprite[..., 3].ravel()) <= {0, 255}
       and set(map(tuple, opaque)) <= {tuple(gpal[1]), tuple(gpal[2])} and len(opaque) == 6 * 9,
       f"grid_cutout: the 6x9 subject cells kept exactly, no background, padded 1 ({sprite.shape[1]}x{sprite.shape[0]})")
+halo = grid.copy()
+halo[4, 5:11, :3] = gpal[0]                                     # the refiner gave the top edge row the background colour
+wide = cut.copy()
+wide[4 * 8:13 * 8, 5 * 8:11 * 8, 3] = 255                       # ... and the cut-out still covers it
+h1, h0 = pixel.grid_cutout(halo, wide, padding=0), pixel.grid_cutout(halo, wide, padding=0, key_background=False)
+check(h1.shape[0] == 8 and h0.shape[0] == 9 and (h0[0, :, :3] == gpal[0]).all(),
+      "grid_cutout: background-coloured edge cells are keyed out (without it they stay as a white halo row)")
 
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
 sys.exit(0 if all(RESULTS) else 1)
