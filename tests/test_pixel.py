@@ -263,5 +263,21 @@ names8 = [n.strip() for n in order8.split(",")]
 check(d8.shape[0] == 8 and all(np.array_equal(d8[clockwise.index(n)], views8[i]) for i, n in enumerate(names8)),
       "directions: 8 drawn views with mirror off are kept as drawn, reordered clockwise")
 
+# 9. Grid Cutout: on-grid pixel art + the full-size cut-out -> the sprite, no resampling, no new colours
+gpal = np.array([[250, 250, 250], [30, 20, 40], [200, 60, 60]], np.uint8)
+grid = np.zeros((16, 16, 4), np.uint8)
+grid[..., :3], grid[..., 3] = gpal[0], 255                      # white background, opaque
+grid[4:13, 5:11, :3] = gpal[1]                                  # the subject: a 6x9 block with a red core
+grid[6:10, 7:9, :3] = gpal[2]
+full = pixel.nearest_upscale(grid, 8)                           # the 128 px image it came from
+cut = full.copy()
+cut[..., 3] = 0
+cut[4 * 8:13 * 8 - 2, 5 * 8:11 * 8 - 2, 3] = 255                # BiRefNet's mask is a little off the grid
+sprite = pixel.grid_cutout(grid, cut, padding=1)
+opaque = sprite[sprite[..., 3] > 0][:, :3]
+check(sprite.shape[:2] == (11, 8) and set(sprite[..., 3].ravel()) <= {0, 255}
+      and set(map(tuple, opaque)) <= {tuple(gpal[1]), tuple(gpal[2])} and len(opaque) == 6 * 9,
+      f"grid_cutout: the 6x9 subject cells kept exactly, no background, padded 1 ({sprite.shape[1]}x{sprite.shape[0]})")
+
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
 sys.exit(0 if all(RESULTS) else 1)

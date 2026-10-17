@@ -108,6 +108,17 @@ DETAIL_TEXT = {
 }
 
 
+PIXEL_TRIGGER = "Pixel art style."   # tarn59's Z-Image LoRA
+
+
+def framing(fill):
+    if fill >= 75:          # a fixed-grid LoRA: the subject has to be big to get enough art pixels
+        return (f"Show the complete subject large in the canvas, filling about {fill}% of its height, with a small empty "
+                "margin on every side; nothing touches or is cut off by the edges.")
+    return (f"Show the complete subject small in the middle of the canvas, filling about {fill}% of it, with a wide empty "
+            "margin on every side; nothing touches or is cut off by the edges.")
+
+
 def pixel_detail(detail, pixels):
     if detail != "auto (from pixels)":
         return detail
@@ -132,6 +143,8 @@ class PixelArtPrompt:
             "extra": ("STRING", {"multiline": True, "default": "", "tooltip": "Anything else to add at the end."}),
         }, "optional": {
             "style_text": ("STRING", {"multiline": True, "default": "", "tooltip": "Custom style sentence; replaces the style template when not empty (used by Sprite Studio's style library)."}),
+            "trigger": ("STRING", {"default": PIXEL_TRIGGER, "tooltip": "The pixel-art LoRA's trigger, said first when lora_trigger is on ('pixel art' for Krea 2's k2-pixel LoRAs)."}),
+            "fill": ("INT", {"default": 60, "min": 30, "max": 95, "tooltip": "How much of the canvas the subject should fill, in percent. A LoRA that draws on a fixed grid (Krea 2's k2-pixel) needs a fuller frame to put enough art pixels on the subject."}),
         }}
 
     RETURN_TYPES = ("STRING", "INT", "INT", "STRING")
@@ -141,25 +154,28 @@ class PixelArtPrompt:
     DESCRIPTION = "Build a prompt for simple, easily pixelated game art from a short subject, and pass size/colours on to Pixelize."
 
     def run(self, subject, style, view, pixels, detail, colors, palette, outline, background, lora_trigger, extra,
-            style_text=""):
+            style_text="", trigger=PIXEL_TRIGGER, fill=60):
         d = pixel_detail(detail, pixels)
+        trig = trigger.strip() if lora_trigger else ""
+        if trig and trig[-1] not in ".,!:;":
+            trig += "."
         outline_text = {"dark outline": "Thick, bold, dark outlines around the silhouette and the main shapes.",
                         "no outline": "No outlines; shapes are separated by colour only.",
                         "coloured outline": "Thin outlines in a darker shade of each colour."}[outline]
         v = PIXEL_VIEWS[view]
         if style == "terrain tile (seamless)":
             return (_join([
-                "Pixel art style." if lora_trigger else "",
+                trig,
                 f"Overhead photo looking straight down at {subject.strip().rstrip('.')}.",
                 "The surface fills the entire frame edge to edge, evenly lit, natural and irregular, with clear "
                 "medium-sized detail and good contrast, no single dominant object, no horizon, no sky, no text.",
                 extra,
             ]), pixels, colors, palette)
         prompt = _join([
-            "Pixel art style." if lora_trigger else "",
+            trig,
             (style_text or "").strip() or PIXEL_STYLES[style],
             f"Subject: {subject.strip().rstrip('.')}. Exactly one subject, drawn once.",
-            (f"Full body, {v}, centred. " if v else "Full body, centred. ") + "Show the complete subject small in the middle of the canvas, filling about 60% of it, with a wide empty margin on every side; nothing touches or is cut off by the edges.",
+            (f"Full body, {v}, centred. " if v else "Full body, centred. ") + framing(fill),
             f"Designed to read clearly at about {pixels} pixels tall.", DETAIL_TEXT[d],
             f"Flat solid colours, {palette_phrase(colors, palette)}, simple cel shading with at most one shadow "
             "and one highlight tone per colour, no gradients, no texture, no noise, no dithering, crisp hard edges.",

@@ -815,6 +815,51 @@ class Pixelize:
         return (to_image_tensor(frames), to_image_tensor(preview), palette_to_text(pals[0]), "\n".join(infos))
 
 
+def grid_cutout(native, cutout, coverage=0.5, padding=1, cleanup=False):
+    """Pixel art already on its grid (one image pixel per art pixel, opaque) + the full-size cut-out it was made from
+    -> the sprite with hard alpha, trimmed to the subject. A cell is opaque when `coverage` of it is subject."""
+    ny, nx = native.shape[:2]
+    cell_x, cell_y = cutout.shape[1] / nx, cutout.shape[0] / ny
+    if abs(cell_x - cell_y) > 1e-6:
+        raise ValueError(f"cut-out {cutout.shape[1]}x{cutout.shape[0]} is not a whole grid of the {nx}x{ny} pixel art")
+    keep = coverage_alpha(cutout, cell_x, 0.0, 0.0, nx, ny, coverage)
+    out = native.copy()
+    out[..., 3] = np.where(keep, 255, 0)
+    out[~keep] = 0
+    if cleanup:
+        out = cleanup_strays(out)
+    x0, y0, x1, y1 = subject_bbox(out[..., 3] > 0)
+    out = out[y0:y1, x0:x1]
+    return np.pad(out, ((padding, padding), (padding, padding), (0, 0))) if padding else out
+
+
+class GridCutout:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "pixel_art": ("IMAGE", {"tooltip": "Pixel art at its native grid, background included (e.g. Krea 2 Pixel Art Refiner with scale_to_original off)."}),
+            "cutout": ("IMAGE", {"tooltip": "The full-size image it was made from, with the background removed (alpha)."}),
+            "coverage": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 0.95, "step": 0.05, "tooltip": "Share of a cell that must be subject for the art pixel to stay."}),
+            "padding": ("INT", {"default": 1, "min": 0, "max": 64, "tooltip": "Transparent art pixels around the subject."}),
+            "cleanup": ("BOOLEAN", {"default": False, "tooltip": "Remove isolated stray pixels (distinct ones like eyes are kept)."}),
+            "preview_scale": ("INT", {"default": 8, "min": 1, "max": 32, "tooltip": "Nearest-neighbour zoom for the preview output."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
+    RETURN_NAMES = ("pixel_art", "preview", "info")
+    FUNCTION = "run"
+    CATEGORY = "comfyui_workflows/pixel"
+    DESCRIPTION = "Cut a sprite out of pixel art that is already on its grid, using the full-size cut-out's alpha. No resampling and no new colours."
+
+    def run(self, pixel_art, cutout, coverage, padding, cleanup, preview_scale):
+        arts, cuts = to_rgba_np(pixel_art), to_rgba_np(cutout)
+        frames = [grid_cutout(a, cuts[min(i, len(cuts) - 1)], coverage, padding, cleanup) for i, a in enumerate(arts)]
+        frames = pad_to_same_size(frames)
+        colours = len(np.unique(frames[0][frames[0][..., 3] > 0][:, :3], axis=0))
+        info = f"{frames[0].shape[1]}x{frames[0].shape[0]} art px from a {arts[0].shape[1]}x{arts[0].shape[0]} grid, {colours} colours"
+        return (to_image_tensor(frames), to_image_tensor([nearest_upscale(f, preview_scale) for f in frames]), info)
+
+
 # ----------------------------------------------------------------------------- sprites through video models
 def pick_background(palette):
     """A flat background colour far from every palette colour (so it can be keyed out exactly)."""
