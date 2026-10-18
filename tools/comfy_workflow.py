@@ -66,6 +66,18 @@ ANIMATE_MODEL = "wan_animate_2_int8_convrot.safetensors"
 ANIMATE_LORA = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
 CLIP_VISION_H = "clip_vision_h.safetensors"
 
+# SCAIL 2 (Z.ai, Apache-2.0 / MIT) character animation on Wan 2.1 14B, Comfy-Org repack; shares the lightx2v LoRA,
+# umt5, clip_vision_h and Wan 2.1 VAE above. SAM3.1 (Meta, SAM licence) masks the person in the driving video.
+SCAIL_HF = "https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main"
+SCAIL_MODEL = "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+SCAIL_DPO_LORA = "wan2.1_SCAIL_2_DPO_lora_bf16.safetensors"
+SAM3 = "sam3.1_multiplex_fp16.safetensors"
+URLS.update({
+    SCAIL_MODEL: f"{SCAIL_HF}/diffusion_models/{SCAIL_MODEL}",
+    SCAIL_DPO_LORA: f"{SCAIL_HF}/loras/{SCAIL_DPO_LORA}",
+    SAM3: f"{HF}/Comfy-Org/sam3.1/resolve/main/checkpoints/{SAM3}",
+})
+
 # Node colors as (color, bgcolor)
 GREEN, RED, YELLOW, BLUE = ("#232", "#353"), ("#322", "#533"), ("#432", "#653"), ("#223", "#335")
 

@@ -25,6 +25,7 @@ My custom ComfyUI workflows, plus a Docker setup that runs ComfyUI with them on 
 | [`pixel-art/prompt-to-pixel`](workflows/pixel-art/prompt-to-pixel.json) | Prompt → pixel art | RTX 4090 (24 GB) | repo nodes | ~21 GB | Type a subject; Pixel Art Prompt adds a game-art style, detail for the sprite size, colours; Z-Image Turbo + pixel-art LoRA (Apache-2.0), ~20 s |
 | [`pixel-art/sprite-from-prompt`](workflows/pixel-art/sprite-from-prompt.json) | Pixel sprite + prompt → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | Remix + 2.5 GB | Looping animation at the sprite's exact pixel size + palette; PNG sheet, Aseprite JSON, WebP |
 | [`pixel-art/sprite-from-video`](workflows/pixel-art/sprite-from-video.json) | Pixel sprite + video → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | ~18.6 GB + Wan encoder/VAE | Wan Animate 2 copies a driving video's motion; same pixel size + palette |
+| [`pixel-art/sprite-from-video-scail2`](workflows/pixel-art/sprite-from-video-scail2.json) | Pixel sprite + video → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | ~19.6 GB (SCAIL 2 int8 + DPO LoRA + SAM3.1) + Wan encoder/VAE | SCAIL 2 (Apache-2.0/MIT) arm of sprite-from-video: same inputs/outputs; SAM3 masks the person in the video, the sprite's own alpha masks the reference; ~2.5 min, peak ~17 GB |
 | [`pixel-art/image-to-directions`](workflows/pixel-art/image-to-directions.json) | Character → 8-direction sprites | RTX 4090 (24 GB) | repo nodes | ~17.8 GB | Qwen-Image-2.1 draws 5 views (editable prompts), pixelized together, mirrored to 8 (or all 8 drawn from Sprite Studio) |
 
 ## Repo layout
@@ -187,6 +188,7 @@ them and iterates until the check passes.
 | `image-to-directions` | character image → 5 Qwen views → 8 directions (left = mirrored right) | ~4 min |
 | `sprite-from-prompt` | pixel sprite + motion prompt → looping sprite sheet | ~1 min (49 frames) |
 | `sprite-from-video` | pixel sprite + driving video → sprite sheet | ~1–2 min (81 frames) |
+| `sprite-from-video-scail2` | same, with SCAIL 2 instead of Wan Animate 2 | ~2.5 min (81 frames, warm) |
 
 ### Pixel size and palette
 - `pixels` (default **64**) sets the size in art pixels. `measure` picks what it means: **subject height** (the
