@@ -11,7 +11,7 @@ model part changes, wired like Comfy's own "FLUX 3 Image Klein distilled: image 
 cfg 1, euler/simple), Qwen3-VL 4B text encoder, references through Reference Multi Latent (<ref_image_0> is the first
 image), empty negative. Klein wants a full caption, not a one-line instruction, so the edit workflows run the short
 request through BFL's prompt upsampler (Qwen3.5 9B, Text Generate) first; switch it off to send your own caption.
-The direction views are written as full captions already, so they skip the upsampler.
+The direction views go through the upsampler too, one short turn instruction per view.
 Needs ComfyUI >= 0.41. Licence: FLUX Kommunity (commercial outputs only under US$5M revenue, with content review).
 """
 from comfy_workflow import (BIREFNET, BIREFNET_URL, BLUE, GREEN, KLEIN_HF as HF, KLEIN_MODEL, KLEIN_TE,
@@ -62,20 +62,16 @@ UPSAMPLE_SYSTEM = (
 # presence_penalty, thinking, use_default_template, mtp (the template's settings: top_k 1 = deterministic)
 TEXTGEN = ["", 3584, "on", 1, 1, 0.95, 0, 1.05, 0, 0, False, True, "off"]
 
-# Direction views: full captions (Klein's style), one line per view.
-KEEP = ("Same character as <ref_image_0>: identical outfit, colours, proportions, props and art style. Full body, "
-        "standing pose, centred, on a plain flat white background, no shadow, no text.")
+# Direction views: one short turn instruction per view, expanded by the upsampler like an edit (as full captions,
+# Klein just redrew the reference unchanged).
+KEEP = "Same character, outfit, colours, proportions and pixel-art style, full body, same size and position."
 VIEWS = [
-    ("front", "Full-body game character turnaround, front view: the character from <ref_image_0> faces the camera "
-              "directly."),
-    ("front-right", "Full-body game character turnaround, three-quarter front view: the character from <ref_image_0> "
-                    "is turned 45 degrees so it faces the right side of the image."),
-    ("right", "Full-body game character turnaround, side profile view: the character from <ref_image_0> faces the "
-              "right edge of the image."),
-    ("back-right", "Full-body game character turnaround, three-quarter back view: the character from <ref_image_0> is "
-                   "seen from behind, turned 45 degrees away from the camera toward the right side of the image."),
-    ("back", "Full-body game character turnaround, back view: the character from <ref_image_0> is seen from directly "
-             "behind, facing away from the camera."),
+    ("front", "Turn the character to face the camera directly: a front view."),
+    ("front-right", "Turn the character 45 degrees so it faces the right side of the image: a three-quarter front view."),
+    ("right", "Turn the character 90 degrees so it faces the right edge of the image: a side profile view."),
+    ("back-right", "Turn the character so we see it from behind, turned 45 degrees toward the right side of the image: "
+                   "a three-quarter back view."),
+    ("back", "Turn the character around so we see it from directly behind: a back view."),
 ]
 PROMPTS = "\n".join(f"{p} {KEEP}" for _, p in VIEWS)
 NAMES = ", ".join(n for n, _ in VIEWS)
@@ -250,9 +246,9 @@ def build_directions():
     note = f"""Character image -> 8-direction pixel sprites, with FLUX 3 Image Klein
 
 1. Load a character image (blue), ideally full body on a plain background (= <ref_image_0>).
-2. "View prompts" (green): ONE FULL CAPTION PER VIEW, in the order of "names" on the Save node:
+2. "View prompts" (green): ONE TURN INSTRUCTION PER VIEW, in the order of "names" on the Save node:
    {NAMES}
-   Klein wants a full description, not an instruction, so each line says what the picture is.
+   The prompt upsampler turns each line into the full caption Klein wants.
 3. Klein draws each view ({STEPS} steps, cfg 1).
 4. All views are pixelized together: body {PIXELS} art px tall, feet on the bottom line, one shared palette.
 5. Save directions: left-side views are the mirrored right-side ones -> 8 directions.
@@ -261,7 +257,20 @@ Saved to output/pixel/: directions_klein_*_<direction>.png, sheet, .json; raw vi
 
     node(1, "LoadImage", [0, 0], [400, 440], outputs=[out("IMAGE", "IMAGE"), out("MASK", "MASK")],
          widgets=["example.png", "image"], title="Character image", color=BLUE)
-    loaders(g, 440, 0, upsampler=False)
+    node(3, "JoinImageWithAlpha", [0, 470], [400, 46], inputs=[inp("image", "IMAGE"), inp("alpha", "MASK")],
+         outputs=[out("IMAGE", "IMAGE")], title="Keep sprite transparency")
+    node(2, "PrepareSpriteForVideo", [0, 530], [400, 130], inputs=[inp("sprite", "IMAGE")],
+         outputs=[out("image", "IMAGE"), out("pixel_spec", "PIXEL_SPEC"), out("width", "INT"), out("height", "INT"),
+                  out("info", "STRING")],
+         widgets=[1024, 0.25, "#ffffff"], title="Upscale onto white (integer)")
+    loaders(g, 440, 0)
+    node(48, "PrimitiveStringMultiline", [820, 540], [460, 160], outputs=[out("STRING", "STRING")],
+         widgets=[UPSAMPLE_SYSTEM], title="Upsampler system prompt")
+    node(47, "TextGenerate", [820, 740], [460, 340],
+         inputs=[inp("clip", "CLIP"), inp("image", "IMAGE"), inp("video", "IMAGE"), inp("audio", "AUDIO"),
+                 inp("system_prompt", "STRING"), inp("prompt", "STRING", "prompt")],
+         outputs=[out("generated_text", "STRING"), out("thinking", "STRING")], widgets=TEXTGEN,
+         title="Prompt upsampler")
     node(10, "StartLoop", [820, 0], [300, 160],
          inputs=[inp("parent_iteration", "INT"), inp("initial_iteration_value", "*"),
                  inp("mode.num_iterations", "INT", "mode.num_iterations")],
@@ -313,17 +322,24 @@ Saved to output/pixel/: directions_klein_*_<direction>.png, sheet, .json; raw vi
     node(40, "PreviewAny", [2860, 250], [360, 160], inputs=[inp("source", "*")], title="Directions info")
     node(41, "SpriteAnimationPreview", [3260, 0], [520, 680], inputs=[inp("frames", "IMAGE"), inp("fps", "INT", "fps")],
          widgets=[3, 6, "checker", "loop"], title="Turnaround preview (all directions)", color=GREEN)
-    node(42, "Note", [0, 490], [460, 560], widgets=[note], title="READ ME", props={})
+    node(42, "Note", [0, 700], [460, 560], widgets=[note], title="READ ME", props={})
 
-    link(1, 0, 10, 1)            # carried value: the input image (unchanged)
+    link(1, 0, 3, 0)
+    link(1, 1, 3, 1)
+    link(3, 0, 2, 0)
+    link(2, 0, 10, 1)            # carried value: the upscaled input image (unchanged)
     link(10, 0, 11, 0)
     link(22, 0, 12, 0)
-    link(11, 0, 12, 1)
+    link(46, 0, 47, 0)
+    link(2, 0, 47, 1)
+    link(48, 0, 47, 4)
+    link(11, 0, 47, 5)
+    link(47, 0, 12, 1)
     link(12, 0, 13, 0)
     link(12, 0, 14, 0)
     link(13, 0, 14, 1)
     link(23, 0, 14, 2)
-    link(1, 0, 14, 3)
+    link(2, 0, 14, 3)
     link(20, 0, 15, 0)
     link(14, 0, 15, 1)
     link(14, 1, 15, 2)
