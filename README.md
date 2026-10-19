@@ -26,6 +26,7 @@ My custom ComfyUI workflows, plus a Docker setup that runs ComfyUI with them on 
 | [`pixel-art/sprite-from-prompt`](workflows/pixel-art/sprite-from-prompt.json) | Pixel sprite + prompt → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | Remix + 2.5 GB | Looping animation at the sprite's exact pixel size + palette; PNG sheet, Aseprite JSON, WebP |
 | [`pixel-art/sprite-from-video`](workflows/pixel-art/sprite-from-video.json) | Pixel sprite + video → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | ~18.6 GB + Wan encoder/VAE | Wan Animate 2 copies a driving video's motion; same pixel size + palette |
 | [`pixel-art/image-to-directions`](workflows/pixel-art/image-to-directions.json) | Character → 8-direction sprites | RTX 4090 (24 GB) | repo nodes | ~17.8 GB | Qwen-Image-2.1 draws 5 views (editable prompts), pixelized together, mirrored to 8 (or all 8 drawn from Sprite Studio) |
+| [`pixel-art/sprite-edit-klein`](workflows/pixel-art/sprite-edit-klein.json), [`sprite-edit-refs-klein`](workflows/pixel-art/sprite-edit-refs-klein.json), [`image-to-directions-klein`](workflows/pixel-art/image-to-directions-klein.json) | Same as the Qwen versions, with FLUX 3 Image Klein | RTX 4090 (24 GB), **ComfyUI ≥ 0.41** (staging) | repo nodes | ~18 GB (Klein 5.8 + encoder 4.9 + upsampler 6.7) | For the Klein vs Qwen test. Gated: accept BFL's terms on HF + `HF_TOKEN`. FLUX Kommunity licence: commercial outputs only under US$5M revenue, with content review |
 
 ## Repo layout
 
@@ -115,6 +116,7 @@ location.
 | Add a custom node | Try it via Manager, then add `<url> <commit>` to `docker/custom_nodes.txt` and run `docker compose up -d --build`. Nodes installed only through Manager are lost when the container is recreated. |
 | Drop in a one-off model | `docker compose cp my_lora.safetensors comfyui:/opt/ComfyUI/models/loras/` |
 | Update ComfyUI | Bump the `COMFYUI_REF` default in `docker-compose.yml` (or set it in `.env`), then `docker compose up -d --build` |
+| Try a newer ComfyUI first | `docker compose --profile staging up -d --build comfyui-staging` runs `STAGING_COMFYUI_REF` (default v0.41.3) on http://localhost:8189 with the same models, workflows and nodes, its own UI settings; `STAGING_MODELS=<workflows>` fetches models on start. One GPU: free the idle server's VRAM first. Stop with `docker compose --profile staging stop comfyui-staging` |
 | Extra launch flags | `COMFY_ARGS=--reserve-vram 1` in `.env` |
 | Models from Civitai | Set `CIVITAI_TOKEN` in `.secrets.env` (civitai.com → Account settings → API Keys). Missing keys are reported and skipped; ComfyUI still starts. |
 | Shell inside the container | `docker compose exec comfyui bash` |

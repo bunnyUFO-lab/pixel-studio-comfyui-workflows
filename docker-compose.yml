@@ -35,6 +35,43 @@ services:
       - ${COMFY_INPUT_DIR:-./input}:/opt/ComfyUI/input       # set in .env to keep inputs/outputs on another drive
       - ${COMFY_OUTPUT_DIR:-./output}:/opt/ComfyUI/output
 
+  # Staging ComfyUI on a newer tag, on demand only: docker compose --profile staging up -d --build comfyui-staging
+  # Tries an upgrade without touching the main server: its own image and UI settings, the same models, workflows,
+  # nodes, input and output. Port 8189 on this machine only. Both share the one GPU, so run jobs on one at a time
+  # (`python tools/comfy.py free` on the idle one first).
+  comfyui-staging:
+    build:
+      context: ./docker
+      args:
+        COMFYUI_REF: ${STAGING_COMFYUI_REF:-v0.41.3}
+    image: comfyui-local:${STAGING_COMFYUI_REF:-v0.41.3}
+    pull_policy: build
+    profiles: ["staging"]
+    restart: "no"
+    ports:
+      - "127.0.0.1:${STAGING_PORT:-8189}:8188"
+    environment:
+      MODELS: ${STAGING_MODELS:-}      # workflows whose models are fetched on start (comma separated)
+      COMFY_ARGS: ${COMFY_ARGS:-}
+    env_file:
+      - path: .secrets.env
+        required: false
+    shm_size: 8gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - models:/opt/ComfyUI/models
+      - user_staging:/opt/ComfyUI/user
+      - ./workflows:/opt/ComfyUI/user/default/workflows
+      - ./custom_nodes/comfyui_workflows_utils:/opt/ComfyUI/custom_nodes/comfyui_workflows_utils:ro
+      - ${COMFY_INPUT_DIR:-./input}:/opt/ComfyUI/input
+      - ${COMFY_OUTPUT_DIR:-./output}:/opt/ComfyUI/output
+
   # Style LoRA trainer (ostris ai-toolkit), on demand only: docker compose --profile train up -d trainer
   # Pixel Studio writes datasets and configs into TRAIN_DIR and reads the output back, so TRAIN_DIR must be
   # the same folder as the app's <data>/train (both on this machine). See trainer/README.md.
@@ -74,4 +111,5 @@ services:
 volumes:
   models:
   user:
+  user_staging:
   hf_cache:

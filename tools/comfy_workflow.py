@@ -40,6 +40,15 @@ QWEN_MODEL = "qwen_image_2.1_int8_convrot.safetensors"
 QWEN_TE = "qwen3vl_8b_int8_convrot.safetensors"
 QWEN_VAE = "qwen_image_2.1_vae_bf16.safetensors"
 
+# FLUX 3 Image Klein (Black Forest Labs, 5.6B; FLUX Kommunity licence: commercial outputs only under US$5M revenue,
+# with content filtering or review). Gated repo: accept the terms on HF, HF_TOKEN in .secrets.env. ComfyUI >= 0.41.
+KLEIN_HF = "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main"
+KLEIN_MODEL = "flux3-image-klein-int8-convrot.safetensors"           # distilled: 16 steps, cfg 1 (5.8 GB)
+KLEIN_TE = "qwen3vl_4b_int8_convrot.safetensors"                    # 4.9 GB, same file as Krea 2's
+KLEIN_TE_URL = "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/" + KLEIN_TE   # ungated copy
+KLEIN_VAE = "flux2-vae.safetensors"
+KLEIN_UPSAMPLER = "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors"   # 6.7 GB, what Comfy's templates use
+
 # Background removal (core LoadBackgroundRemovalModel), MIT
 BIREFNET = "birefnet.safetensors"
 BIREFNET_URL = "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors"
