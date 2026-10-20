@@ -78,6 +78,20 @@ URLS.update({
     SAM3: f"{HF}/Comfy-Org/sam3.1/resolve/main/checkpoints/{SAM3}",
 })
 
+# MiniMax H3 Ref2VA (MiniMax community licence: excludes the US, EU, UK and South Korea without a commercial licence),
+# Comfy-Org repack. Smallest build: pruned w6a8 model (16 GB) + NVFP4 Qwen3-VL 32B text encoder (15.7 GB).
+H3_HF = "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main"
+H3_MODEL = "minimax_h3_ref2va_pruned_w6a8.safetensors"
+H3_TE = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+H3_VAE = "minimax_h3_video_vae_int8_convrot.safetensors"
+H3_AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
+URLS.update({
+    H3_MODEL: f"{H3_HF}/diffusion_models/{H3_MODEL}",
+    H3_TE: f"{H3_HF}/text_encoders/{H3_TE}",
+    H3_VAE: f"{H3_HF}/vae/{H3_VAE}",
+    H3_AUDIO_VAE: f"{H3_HF}/vae/{H3_AUDIO_VAE}",
+})
+
 # Node colors as (color, bgcolor)
 GREEN, RED, YELLOW, BLUE = ("#232", "#353"), ("#322", "#533"), ("#432", "#653"), ("#223", "#335")
 
