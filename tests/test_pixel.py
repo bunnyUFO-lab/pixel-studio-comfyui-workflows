@@ -181,8 +181,13 @@ red = pixel.reduce_palette(pal16, [5, 1, 1, 4, 1, 3, 6, 1], 4)
 check(len(red) == 4 and all(any((c == q).all() for q in pal16) for c in red),
       f"reduce_palette keeps 4 of the sprite's own colours ({pixel.palette_to_text(red)})")
 px = np.repeat(pal16, 50, 0)
-ap = pixel.auto_palette(px, 32, 20.0)
+ap = pixel.auto_palette(px, 32, 20.0, min_colors=2)
 check(len(ap) == 4, f"auto_palette: near-duplicate shades merge -> {len(ap)} colours")
+check(len(pixel.auto_palette(px, 32, 20.0)) == 8, "auto_palette: art with fewer distinct colours than the floor keeps them all (8)")
+ramp = np.repeat(np.stack([np.linspace(40, 60, 40), np.linspace(120, 135, 40), np.linspace(40, 50, 40)], 1).astype(np.uint8), 30, 0)
+check(len(pixel.auto_palette(ramp, 32, 20.0, min_colors=2)) < 10 and len(pixel.auto_palette(ramp, 32, 20.0)) == 10,
+      f"auto_palette: never fewer than {pixel.AUTO_MIN_COLORS} colours when the art has them (a soft green ramp would give "
+      f"{len(pixel.auto_palette(ramp, 32, 20.0, min_colors=2))})")
 rng2 = np.random.default_rng(5)
 spec_f = {"factor": 8, "canvas": (8, 8), "offset": (0, 0), "size": (8, 8), "palette": [[200, 30, 30], [185, 40, 35]],
           "counts": [10, 10], "bg": [0, 255, 0]}
@@ -267,6 +272,29 @@ clockwise = ["front", "front-right", "right", "back-right", "back", "back-left",
 names8 = [n.strip() for n in order8.split(",")]
 check(d8.shape[0] == 8 and all(np.array_equal(d8[clockwise.index(n)], views8[i]) for i, n in enumerate(names8)),
       "directions: 8 drawn views with mirror off are kept as drawn, reordered clockwise")
+
+# 9. Grid Cutout: on-grid pixel art + the full-size cut-out -> the sprite, no resampling, no new colours
+gpal = np.array([[250, 250, 250], [30, 20, 40], [200, 60, 60]], np.uint8)
+grid = np.zeros((16, 16, 4), np.uint8)
+grid[..., :3], grid[..., 3] = gpal[0], 255                      # white background, opaque
+grid[4:13, 5:11, :3] = gpal[1]                                  # the subject: a 6x9 block with a red core
+grid[6:10, 7:9, :3] = gpal[2]
+full = pixel.nearest_upscale(grid, 8)                           # the 128 px image it came from
+cut = full.copy()
+cut[..., 3] = 0
+cut[4 * 8:13 * 8 - 2, 5 * 8:11 * 8 - 2, 3] = 255                # BiRefNet's mask is a little off the grid
+sprite = pixel.grid_cutout(grid, cut, padding=1)
+opaque = sprite[sprite[..., 3] > 0][:, :3]
+check(sprite.shape[:2] == (11, 8) and set(sprite[..., 3].ravel()) <= {0, 255}
+      and set(map(tuple, opaque)) <= {tuple(gpal[1]), tuple(gpal[2])} and len(opaque) == 6 * 9,
+      f"grid_cutout: the 6x9 subject cells kept exactly, no background, padded 1 ({sprite.shape[1]}x{sprite.shape[0]})")
+halo = grid.copy()
+halo[4, 5:11, :3] = gpal[0]                                     # the refiner gave the top edge row the background colour
+wide = cut.copy()
+wide[4 * 8:13 * 8, 5 * 8:11 * 8, 3] = 255                       # ... and the cut-out still covers it
+h1, h0 = pixel.grid_cutout(halo, wide, padding=0), pixel.grid_cutout(halo, wide, padding=0, key_background=False)
+check(h1.shape[0] == 8 and h0.shape[0] == 9 and (h0[0, :, :3] == gpal[0]).all(),
+      "grid_cutout: background-coloured edge cells are keyed out (without it they stay as a white halo row)")
 
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
 sys.exit(0 if all(RESULTS) else 1)

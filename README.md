@@ -23,6 +23,7 @@ My custom ComfyUI workflows, plus a Docker setup that runs ComfyUI with them on 
 | [`pixel-art/prompt-to-tile`](workflows/pixel-art/prompt-to-tile.json) | Prompt → seamless tile | RTX 4090 (24 GB) | repo nodes | ~21 GB (Z-Image) | Terrain texture → exact grid → seamless tile (min-cut wrap seams, own pixels only); palette can match a tileset |
 | [`pixel-art/image-to-pixel`](workflows/pixel-art/image-to-pixel.json) | Image → pixel art | Any (GPU speeds up BiRefNet) | repo nodes | 444 MB | True pixel art at native size: `pixels` = subject height, limited/preset palette, hard alpha, PixelOE |
 | [`pixel-art/prompt-to-pixel`](workflows/pixel-art/prompt-to-pixel.json) | Prompt → pixel art | RTX 4090 (24 GB) | repo nodes | ~21 GB | Type a subject; Pixel Art Prompt adds a game-art style, detail for the sprite size, colours; Z-Image Turbo + pixel-art LoRA (Apache-2.0), ~20 s |
+| [`pixel-art/prompt-to-pixel-krea2`](workflows/pixel-art/prompt-to-pixel-krea2.json) | Prompt → pixel art | RTX 4090 (24 GB) | Krea 2 Pixel Art Refiner + repo nodes | ~19 GB (Krea 2) | Being evaluated against `prompt-to-pixel`: Krea 2 Turbo + a k2-pixel LoRA (32 / 64 / 128 grid), clean-up by Pixelize or the LoRA author's refiner; ~14 s warm, ~65 s cold |
 | [`pixel-art/sprite-from-prompt`](workflows/pixel-art/sprite-from-prompt.json) | Pixel sprite + prompt → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | Remix + 2.5 GB | Looping animation at the sprite's exact pixel size + palette; PNG sheet, Aseprite JSON, WebP |
 | [`pixel-art/sprite-from-video`](workflows/pixel-art/sprite-from-video.json) | Pixel sprite + video → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | ~18.6 GB + Wan encoder/VAE | Wan Animate 2 copies a driving video's motion; same pixel size + palette |
 | [`pixel-art/sprite-from-video-scail2`](workflows/pixel-art/sprite-from-video-scail2.json) | Pixel sprite + video → sprite sheet | RTX 4090 (24 GB) | VideoHelperSuite + repo nodes | ~19.6 GB (SCAIL 2 int8 + DPO LoRA + SAM3.1) + Wan encoder/VAE | SCAIL 2 (Apache-2.0/MIT) arm of sprite-from-video: same inputs/outputs; SAM3 masks the person in the video, the sprite's own alpha masks the reference; ~2.5 min, peak ~17 GB |
@@ -152,8 +153,9 @@ location.
 | **Sprite Animation Preview** | Plays frames as a looping animation inside the node: fps, pixel-perfect zoom, checker/white/black/grey/transparent background, loop or ping-pong. |
 | **Save Sprite Sheet** | Frames → sheet PNG + Aseprite JSON (frames, durations, `frameTags`) + animated WebP and GIF + preview (plays in the node); outputs `fps` for the preview; frame step, max frames, loop trim, columns, trim. |
 | **Save Directional Views** | Views (front, front-right, right, back-right, back) → one PNG per direction + sheet + JSON, mirroring the right side to get the left (8 directions). |
+| **Grid Cutout** | Pixel art already on its grid (e.g. the Krea 2 refiner's output) + the full-size cut-out it came from → the sprite: a cell stays when `coverage` of it is subject, trimmed and padded; no resampling, no new colours. |
 | **Pixel Art Check (game-ready)** | PASS/FAIL report: hard alpha, native ×1, palette size, consistent height across frames (can be turned off for action clips), expected height, stray pixels. |
-| **Pixel Art Prompt** | Subject + game-art style (clean sprite, 16-bit RPG, 8-bit, chibi, top-down, side-scroller, isometric, item/icon, monster, prop) + view + `pixels` (sets the detail level) + colours/palette + outline → a full prompt for simple, easily pixelated art. Also outputs `pixels` / `colors` / `palette` to drive Pixelize. |
+| **Pixel Art Prompt** | Subject + game-art style (clean sprite, 16-bit RPG, 8-bit, chibi, top-down, side-scroller, isometric, item/icon, monster, prop) + view + `pixels` (sets the detail level) + colours/palette + outline → a full prompt for simple, easily pixelated art. Also outputs `pixels` / `colors` / `palette` to drive Pixelize. Optional `trigger` (another LoRA's trigger) and `fill` (how much of the canvas the subject fills, default 60 %). |
 | **Vector Art Prompt** | Generate or "redraw `<image1>`" prompt for flat, easily vectorized art: style (faithful flat redraw, flat vector, cartoon, logo, icon, sticker, line art, game item / UI art, stylized game character), colours/palette, detail, outlines, shading. Also outputs `colors` / `palette` to drive Layered Vectorize. |
 | **SVG Stats (shapes, file size)** | Takes an SVG string and outputs a summary (shapes, colours, saved file size, canvas size; for Layered Vectorize output, base colours with shadow/highlight shades listed separately), plus `shapes` (INT) and `size_kb` (FLOAT). The size includes the workflow metadata that ComfyUI's Save SVG node embeds. |
 
@@ -185,6 +187,7 @@ them and iterates until the check passes.
 |---|---|---|
 | `image-to-pixel` | any image → pixel art (BiRefNet cut-out, Pixelize) | ~3 s |
 | `prompt-to-pixel` | prompt → Z-Image Turbo + pixel-art LoRA → pixel art | ~20 s |
+| `prompt-to-pixel-krea2` | prompt → Krea 2 Turbo + k2-pixel LoRA → pixel art (Pixelize or the author's refiner) | ~14 s warm |
 | `image-to-directions` | character image → 5 Qwen views → 8 directions (left = mirrored right) | ~4 min |
 | `sprite-from-prompt` | pixel sprite + motion prompt → looping sprite sheet | ~1 min (49 frames) |
 | `sprite-from-video` | pixel sprite + driving video → sprite sheet | ~1–2 min (81 frames) |
@@ -195,7 +198,8 @@ them and iterates until the check passes.
   non-transparent area), longest side, image height, cell size (source pixels per art pixel), **body height (per
   frame)** (each image's body, ignoring thin props like staffs; used for views drawn at different scales), or
   **auto (detect grid)**, which recovers already-pixelated art (even upscaled) exactly.
-- `colors` = **0 (default): automatic, the fewest colours that keep the look**. `color_error` sets how far colours
+- `colors` = **0 (default): automatic, the fewest colours that keep the look, never fewer than 10** (fewer read as flat,
+  washed-out sprites; art with fewer distinct colours keeps the ones it has). `color_error` sets how far colours
   may drift: 12 is faithful, **20 (default)** simplified, 30+ very few. The error is measured at the 90th percentile,
   so small distinct areas such as a blade, skin or eyes keep their own colour. The swordsman sprite came out at
   6 colours. You can also set an exact number.
@@ -251,6 +255,23 @@ The template adds flat colours, one shadow and one highlight tone, thick outline
 background and the LoRA trigger, so the drawing is already simple enough to pixelate cleanly. The same `pixels`,
 `colors` and `palette` drive Pixelize and the check. On the swordsman, the template styles gave 3–5 colours and
 1–11 stray pixels, with a readable face and sword even at 24 px.
+
+### Krea 2 (`prompt-to-pixel-krea2`, being evaluated)
+The same graph as `prompt-to-pixel` with **Krea 2 Turbo** (12.9B, int8, 8 steps, no CFG) and one of
+[e-n-v-y's k2-pixel LoRAs](https://huggingface.co/e-n-v-y/Krea-2-Pixel-Art) (MIT). Each LoRA draws on a fixed grid of
+32, 64 or 128 cells across the 1024 px image, so pick the file from the size you want; trigger `pixel art`
+(the author says k2-pixel64 works best without it, so `lora_trigger` is off for 64). The prompt asks for a big
+subject (`fill` 85 %) so the grid puts enough cells on it.
+
+Clean-up is a switch, **Clean-up: author's refiner?**:
+- off (default): **Pixelize** as in `prompt-to-pixel` (subject height = `pixels`, automatic palette);
+- on: the author's **Krea 2 Pixel Art Refiner** collapses the LoRA's own grid (set its width/height to the LoRA's
+  number; most common colour per cell, 24-colour OKLab palette), then **Grid Cutout** keeps the cells BiRefNet marks as
+  subject. The sprite is then as tall as the subject is in grid cells (about 60 for k2-pixel64), not `pixels`.
+
+Krea 2 is text-to-image only; edits and directions stay on Qwen-Image 2.1. It needs ~19 GB (model 13.5 GB, Qwen3-VL
+4B encoder 4.9 GB, VAE) and peaks near 22 GB of GPU memory on the 4090 with the encoder loaded, so a 12 GB local LLM
+does not fit beside it. Not in `env/pixel.env` while it is being evaluated (`MODELS=all` fetches it).
 
 ### Animations keep the sprite's exact pixels
 Video models can't output 64 px sprites, so the sprite workflows:
@@ -322,6 +343,12 @@ A good split: generate here, then finish in Aseprite. Clean single pixels, retim
   rights to the images they generate ([QwenDevs](https://x.com/QwenDevs/status/2101917379785838660)). Sprites you
   generate can be used in a commercial game. Don't redistribute the model or build a service on it.
 - The Wan 2.2 Remix checkpoints are community merges; check their model card before commercial use.
+- **Krea 2** (`prompt-to-pixel-krea2`) uses the Krea 2 Community Licence (PDF in
+  [Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2)): read it before shipping; write-ups describe free
+  commercial use under about $1M revenue and 50 seats, and content filtering duties for anyone deploying it. The
+  k2-pixel LoRAs are MIT.
+- **ComfyUI-Krea2-Pixel-Art-Refiner** has no licence file at the pinned commit, so by default all rights stay with its
+  author: running it on your own machine is fine, shipping or hosting it is not until the author adds a licence.
 
 ## Image to SVG (local, VTracer)
 
