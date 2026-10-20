@@ -74,6 +74,14 @@ for slot in ("mid", "near", "foreground"):
 check("Nothing behind it" not in sp.run("x", "sky", 180, 0, "auto", "white", True, "")[0],
       "the sky slot is not told there is no sky behind it")
 
+# Krea 2's k2-pixel LoRAs: their own trigger and a bigger subject; the defaults keep today's prompt
+kp = pp.run("a knight", "clean game sprite", "front", 64, "auto (from pixels)", 0, "auto", "dark outline", "plain white", True, "", "", "pixel art", 85)[0]
+check(kp.startswith("pixel art. A clean") and "filling about 85% of its height" in kp and "small empty margin" in kp
+      and "Pixel art style" not in kp, "pixel prompt: another LoRA trigger and a fuller frame")
+dp = pp.run("a knight", "clean game sprite", "front", 64, "auto (from pixels)", 0, "auto", "dark outline", "plain white", True, "")[0]
+check(dp.startswith("Pixel art style.") and "small in the middle of the canvas, filling about 60% of it, with a wide empty margin" in dp,
+      "pixel prompt: defaults unchanged (tarn59 trigger, 60% framing)")
+
 print()
 print(f"{sum(RESULTS)}/{len(RESULTS)} passed")
 sys.exit(0 if all(RESULTS) else 1)

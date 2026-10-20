@@ -65,7 +65,7 @@ class SVGStats:
 
 from .edit import CropForMaskedEdit, MaskedEditComposite  # noqa: E402
 from .layered import LayeredVectorize  # noqa: E402
-from .pixel import (CleanCutout, ClearSky, CropToStrip, MakeTileable, PixelArtCheck, Pixelize, RestoreSpriteCanvas, PrepareSpriteForVideo, RepixelateFrames, SaveDirections,  # noqa: E402
+from .pixel import (CleanCutout, ClearSky, CropToStrip, GridCutout, MakeTileable, PixelArtCheck, Pixelize, RestoreSpriteCanvas, PrepareSpriteForVideo, RepixelateFrames, SaveDirections,  # noqa: E402
                     SaveSpriteSheet, SpriteAnimationPreview, SpriteVideoMask)
 from .prompts import PixelArtPrompt, SceneryPrompt, VectorArtPrompt  # noqa: E402
 from .video import JoinVideoSegments, ResizeForWan, SegmentPrompt, VideoAnchorAndTail, WanSVIProConditioning  # noqa: E402
@@ -82,6 +82,7 @@ NODE_CLASS_MAPPINGS = {
     "CropForMaskedEdit": CropForMaskedEdit,
     "Pixelize": Pixelize,
     "CleanCutout": CleanCutout,
+    "GridCutout": GridCutout,
     "RestoreSpriteCanvas": RestoreSpriteCanvas,
     "MakeTileable": MakeTileable,
     "CropToStrip": CropToStrip,
@@ -109,6 +110,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CropForMaskedEdit": "Crop For Masked Edit (enlarge masked area)",
     "Pixelize": "Pixelize (true pixel art)",
     "CleanCutout": "Clean Cutout (drop shadow, background pockets)",
+    "GridCutout": "Grid Cutout (sprite from on-grid pixel art + cut-out)",
     "RestoreSpriteCanvas": "Restore Sprite Canvas (original size)",
     "MakeTileable": "Make Tileable (seamless pixel tile or sideways strip)",
     "CropToStrip": "Crop To Strip (full-width band for a parallax layer)",

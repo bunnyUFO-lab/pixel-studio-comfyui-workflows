@@ -56,6 +56,17 @@ ZIMAGE_VAE = "ae.safetensors"
 PIXEL_LORA = "pixel_art_style_z_image_turbo.safetensors"
 PIXEL_LORA_URL = "https://huggingface.co/tarn59/pixel_art_style_lora_z_image_turbo/resolve/main/" + PIXEL_LORA
 
+# Krea 2 Turbo (Krea, Krea 2 Community Licence: free commercial use under ~$1M revenue / 50 seats, deployers must
+# filter content) text-to-image, Comfy-Org repack. 12.9B, 8 steps, no CFG, 1K-2K. Text only: no edit mode.
+KREA2_HF = "https://huggingface.co/Comfy-Org/Krea-2/resolve/main"
+KREA2_MODEL = "krea2_turbo_int8_convrot.safetensors"     # 13.5 GB
+KREA2_TE = "qwen3vl_4b_int8_convrot.safetensors"          # 4.9 GB
+KREA2_VAE = "qwen_image_vae.safetensors"                  # 0.25 GB
+# Pixel-art LoRAs for Krea 2 (e-n-v-y, MIT), one per logical grid across a 1024 px image. Trigger "pixel art"
+# (the author: k2-pixel64 works best without it).
+K2_PIXEL_HF = "https://huggingface.co/e-n-v-y/Krea-2-Pixel-Art/resolve/main"
+K2_PIXEL_LORAS = {32: "k2-pixel32.safetensors", 64: "k2-pixel64.safetensors", 128: "k2-pixel128.safetensors"}
+
 # Pixel-art sprite animation LoRA for Wan 2.2 I2V (styly-agents, Apache-2.0); same file on HIGH and LOW
 PIXEL_ANIM_LORA = "wan2.2_animate_adapter_model.safetensors"
 PIXEL_ANIM_LORA_URL = "https://huggingface.co/styly-agents/Wan2-2-pixel-animate/resolve/main/" + PIXEL_ANIM_LORA
