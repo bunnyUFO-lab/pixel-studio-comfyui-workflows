@@ -8,3 +8,8 @@ https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite 4d907bee61e92c2e65af3bd6
 
 # Raster -> SVG with VTracer (TS_* nodes) - used by image-to-svg/vtracer-svg
 https://github.com/Yanick112/ComfyUI-ToSVG 1022ba05318dccb4fe586ce5bbd09f1f0b3c7909
+
+# Krea 2 Pixel Art Refiner (envy-ai) - the k2-pixel LoRA author's clean-up, used by prompt-to-pixel-krea2 (switch
+# "Clean-up: author's refiner?"). No licence file at this commit: fine to run here, not to ship (see README).
+# Needs only opencv, numpy, torch and Pillow, which the image already has (no requirements.txt).
+https://github.com/envy-ai/ComfyUI-Krea2-Pixel-Art-Refiner 0b01ea37f1573ca26a8511337e7d9d77759ee2c7
