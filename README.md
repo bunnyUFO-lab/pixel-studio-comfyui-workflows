@@ -193,7 +193,7 @@ them and iterates until the check passes.
 | `sprite-from-prompt` | pixel sprite + motion prompt → looping sprite sheet | ~1 min (49 frames) |
 | `sprite-from-video` | pixel sprite + driving video → sprite sheet | ~1–2 min (81 frames) |
 | `sprite-from-video-scail2` | same, with SCAIL 2 instead of Wan Animate 2 | ~2.5 min (81 frames, warm) |
-| `sprite-from-video-h3` | same, with MiniMax H3 Ref2VA (can take a second view) | ~53 min with 14 GB VRAM free and 10 GB WSL RAM (weights stream from disk every step); faster with the card to itself |
+| `sprite-from-video-h3` | same, with MiniMax H3 Ref2VA (can take a second view) | ~47–53 min with 14–17 GB VRAM free and 10 GB WSL RAM (weights stream from disk every step); needs more WSL RAM or a 48 GB GPU |
 
 ### Pixel size and palette
 - `pixels` (default **64**) sets the size in art pixels. `measure` picks what it means: **subject height** (the
