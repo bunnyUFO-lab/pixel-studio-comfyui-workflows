@@ -176,8 +176,13 @@ red = pixel.reduce_palette(pal16, [5, 1, 1, 4, 1, 3, 6, 1], 4)
 check(len(red) == 4 and all(any((c == q).all() for q in pal16) for c in red),
       f"reduce_palette keeps 4 of the sprite's own colours ({pixel.palette_to_text(red)})")
 px = np.repeat(pal16, 50, 0)
-ap = pixel.auto_palette(px, 32, 20.0)
+ap = pixel.auto_palette(px, 32, 20.0, min_colors=2)
 check(len(ap) == 4, f"auto_palette: near-duplicate shades merge -> {len(ap)} colours")
+check(len(pixel.auto_palette(px, 32, 20.0)) == 8, "auto_palette: art with fewer distinct colours than the floor keeps them all (8)")
+ramp = np.repeat(np.stack([np.linspace(40, 60, 40), np.linspace(120, 135, 40), np.linspace(40, 50, 40)], 1).astype(np.uint8), 30, 0)
+check(len(pixel.auto_palette(ramp, 32, 20.0, min_colors=2)) < 10 and len(pixel.auto_palette(ramp, 32, 20.0)) == 10,
+      f"auto_palette: never fewer than {pixel.AUTO_MIN_COLORS} colours when the art has them (a soft green ramp would give "
+      f"{len(pixel.auto_palette(ramp, 32, 20.0, min_colors=2))})")
 rng2 = np.random.default_rng(5)
 spec_f = {"factor": 8, "canvas": (8, 8), "offset": (0, 0), "size": (8, 8), "palette": [[200, 30, 30], [185, 40, 35]],
           "counts": [10, 10], "bg": [0, 255, 0]}

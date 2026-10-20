@@ -130,13 +130,17 @@ def palette_error(rgb_pixels, palette, percentile=97):
     return float(np.percentile(np.sqrt(((lab - pal[nearest_index(lab, pal)]) ** 2).sum(-1)), percentile))
 
 
-def auto_palette(rgb_pixels, max_colors=32, max_error=20.0):
-    """Fewest colours (2..max_colors) whose palette keeps the colour error (97th percentile of flat pixels, Lab) under max_error."""
+AUTO_MIN_COLORS = 10   # automatic palettes never go below this: fewer read as flat, washed-out sprites (owner, 19 Oct 2026)
+
+
+def auto_palette(rgb_pixels, max_colors=32, max_error=20.0, min_colors=AUTO_MIN_COLORS):
+    """Fewest colours (min_colors..max_colors) whose palette keeps the colour error (97th percentile of flat pixels, Lab)
+    under max_error. Art with fewer distinct colours than min_colors keeps the ones it has."""
     px = np.asarray(rgb_pixels, np.uint8).reshape(-1, 3)
     if len(px) > 30000:
         px = px[np.random.default_rng(0).choice(len(px), 30000, replace=False)]
     pal = None
-    for k in range(2, max_colors + 1):
+    for k in range(max(2, min(min_colors, max_colors)), max_colors + 1):
         pal = kmeans_palette(px, k)
         if palette_error(px, pal) <= max_error or len(pal) < k:
             break
@@ -786,7 +790,7 @@ class Pixelize:
                         {"tooltip": "What 'pixels' means. subject height uses the first image's grid for all. whole frame = the frame itself becomes 'pixels' tall, nothing cropped to the subject and no padding: for a parallax layer or anything that must keep its exact size and its empty areas. body height (per frame) = each image's body (thin props like staffs ignored) becomes 'pixels' tall: for views drawn at different scales. auto = the input is already (upscaled) pixel art: detect its grid and recover it exactly."}),
             "method": (["pixeloe", "dominant", "median", "center", "mean"], {"tooltip": "How each art pixel is chosen. pixeloe = PixelOE's contrast-aware method (outline expansion; cleanest for illustrations). dominant = most common palette colour in the cell. median/center/mean = that colour of the cell, snapped to the palette."}),
             "smooth": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "Edge-preserving smoothing before pixelizing (Kuwahara radius in art pixels). Flattens texture/noise into solid areas; 0 = off. Ignored for 'auto (detect grid)'."}),
-            "colors": ("INT", {"default": 16, "min": 0, "max": 256, "tooltip": "Number of colours. 0 = automatic: the fewest colours that keep the colour error under color_error. With a preset/hex palette: use only its N most fitting colours (0 = all)."}),
+            "colors": ("INT", {"default": 16, "min": 0, "max": 256, "tooltip": "Number of colours. 0 = automatic: the fewest colours (at least 10) that keep the colour error under color_error. With a preset/hex palette: use only its N most fitting colours (0 = all)."}),
             "color_error": ("FLOAT", {"default": 20.0, "min": 2.0, "max": 60.0, "step": 0.5, "tooltip": "colors = 0 only: allowed colour difference (Lab, 90th percentile, so small areas like blades and eyes count) from the original. Higher = fewer colours (12 = faithful, 20 = simplified, 30+ = very few)."}),
             "palette": ("STRING", {"default": "auto", "tooltip": "auto, a preset (PICO-8, DB32, Endesga-32, GameBoy) or hex colours (#1a1c2c #5d275d ...)."}),
             "shared_palette": ("BOOLEAN", {"default": True, "tooltip": "Batches (frames/views): one palette for all."}),

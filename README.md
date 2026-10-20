@@ -196,7 +196,8 @@ them and iterates until the check passes.
   non-transparent area), longest side, image height, cell size (source pixels per art pixel), **body height (per
   frame)** (each image's body, ignoring thin props like staffs; used for views drawn at different scales), or
   **auto (detect grid)**, which recovers already-pixelated art (even upscaled) exactly.
-- `colors` = **0 (default): automatic, the fewest colours that keep the look**. `color_error` sets how far colours
+- `colors` = **0 (default): automatic, the fewest colours that keep the look, never fewer than 10** (fewer read as flat,
+  washed-out sprites; art with fewer distinct colours keeps the ones it has). `color_error` sets how far colours
   may drift: 12 is faithful, **20 (default)** simplified, 30+ very few. The error is measured at the 90th percentile,
   so small distinct areas such as a blade, skin or eyes keep their own colour. The swordsman sprite came out at
   6 colours. You can also set an exact number.
