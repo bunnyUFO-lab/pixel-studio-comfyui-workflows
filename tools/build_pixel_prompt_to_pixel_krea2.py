@@ -17,7 +17,7 @@ SUBJECT = "a fantasy knight with a blue cape and a sword, standing"
 STYLE, VIEW, DETAIL, OUTLINE = "clean game sprite", "front three-quarter", "auto (from pixels)", "dark outline"
 WIDTH, HEIGHT = 1024, 1024
 GRID = 64              # k2-pixel LoRA: 32, 64 or 128 cells across the 1024 px image
-LORA_STRENGTH = 1.0    # the author gives none; 1.0 is the LoRA's own default
+LORA_STRENGTH = 0.6    # the author gives none; 0.6 won the owner's blind comparison (17-19 Oct 2026), 1.0 is a stronger toon look
 TRIGGER = "pixel art"  # the LoRA's trigger; the author says k2-pixel64 works best without it
 USE_TRIGGER = GRID != 64
 FILL = 85              # % of the canvas the subject fills: the fixed grid needs a big subject for enough art pixels
@@ -40,16 +40,17 @@ NOTE = f"""Prompt -> pixel art with Krea 2
    trigger "{TRIGGER}" (lora_trigger off for k2-pixel64, which the author says works best without it).
 2. Model: Krea 2 Turbo (Krea 2 Community Licence), 8 steps, no CFG, 1024 px. "Pixel-art LoRA" = k2-pixel32 / 64 / 128
    (MIT): the LoRA draws on a grid of that many cells across the image. Pick it from the size you want.
-3. Clean-up, switch "Clean-up: author's refiner?":
+3. Clean-up, the three "...: author's refiner?" switches (set all three the same):
    off (default) = Pixelize: finds the subject, makes it 'pixels' tall, automatic palette (like prompt-to-pixel).
-   on = Krea 2 Pixel Art Refiner: collapses the LoRA's own grid (set its width/height = the LoRA's number), most
+   on = Krea 2 Pixel Art Refiner: collapses the LoRA's own grid (set its width and height to the LoRA's number), most
    common colour per cell, {REFINER_COLORS} colours, then Grid Cutout keeps the cells BiRefNet marks as subject.
    The sprite is then as tall as the subject is in grid cells (about {FILL}% of the grid), not 'pixels'.
 4. Run. Saved to output/pixel/:
    prompt_to_pixel_krea2_*.png      native size, transparent -> use in games
    prompt_to_pixel_krea2_x8_*.png   zoomed preview
    prompt_to_pixel_krea2_raw_*.png  the generated 1024 px image
-"Pixel Art Check" must say PASS (it does not check the height: the refiner's height follows the drawing)."""
+"Pixel Art Check" must say PASS. With Pixelize it also checks the subject height; with the refiner it doesn't (the
+height follows the drawing)."""
 
 g = Graph()
 node, link = g.node, g.link
@@ -102,7 +103,7 @@ node(16, "Pixelize", [1580, 0], [360, 440], inputs=[inp("images", "IMAGE"), inp(
      outputs=[out("pixel_art", "IMAGE"), out("preview", "IMAGE"), out("palette", "STRING"), out("info", "STRING")],
      widgets=PIXELIZE, title="Pixelize", color=YELLOW)
 node(26, "Krea2PixelArtRefiner", [1580, 500], [360, 180], inputs=[inp("image", "IMAGE")], outputs=[out("IMAGE", "IMAGE")],
-     widgets=[GRID, GRID, REFINER_COLORS, True, False], title="Krea 2 Pixel Art Refiner (width/height = LoRA grid)", color=YELLOW)
+     widgets=[GRID, GRID, REFINER_COLORS, True, False], title="Krea 2 Pixel Art Refiner", color=YELLOW)
 node(27, "GridCutout", [1580, 720], [360, 160], inputs=[inp("pixel_art", "IMAGE"), inp("cutout", "IMAGE")],
      outputs=[out("pixel_art", "IMAGE"), out("preview", "IMAGE"), out("info", "STRING")], widgets=[0.5, 1, False, 8],
      title="Grid Cutout")
@@ -114,7 +115,10 @@ node(17, "SaveImage", [2340, 0], [360, 300], inputs=[inp("images", "IMAGE")], wi
      title="Save pixel art (native size)", color=GREEN)
 node(18, "SaveImage", [2340, 340], [360, 420], inputs=[inp("images", "IMAGE")], widgets=["pixel/prompt_to_pixel_krea2_x8"],
      title="Save preview (x8)")
-node(19, "PixelArtCheck", [1980, 260], [320, 106], inputs=[inp("images", "IMAGE")],
+node(30, "PrimitiveInt", [1980, 640], [320, 58], outputs=[out("INT", "INT")], widgets=[0], title="No height check")
+node(31, "ComfySwitchNode", [1980, 720], [320, 80], inputs=[inp("on_false", "INT"), inp("on_true", "INT")],
+     outputs=[out("output", "INT")], widgets=[REFINER], title="Height check: author's refiner?")
+node(19, "PixelArtCheck", [1980, 260], [320, 106], inputs=[inp("images", "IMAGE"), inp("expected_height", "INT", "expected_height")],
      outputs=[out("report", "STRING"), out("passed", "BOOLEAN")], widgets=[MAX_COLORS, 0, True], title="Pixel Art Check")
 node(20, "PreviewAny", [1980, 410], [320, 200], inputs=[inp("source", "*")], title="Check report")
 node(22, "Note", [400, 480], [420, 520], widgets=[NOTE], title="READ ME", props={})
@@ -152,6 +156,9 @@ link(23, 0, 24, 0)
 link(23, 1, 16, 1)           # the same pixels / colors / palette drive Pixelize
 link(23, 2, 16, 2)
 link(23, 3, 16, 3)
+link(23, 1, 31, 0)           # Pixelize makes the subject exactly 'pixels' tall: check it ...
+link(30, 0, 31, 1)           # ... the refiner follows the drawing, so its height is not checked
+link(31, 0, 19, 1)
 
 g.save(OUT, "pixel-art-prompt-to-pixel-krea2",
        groups=[("Prompt template", [380, -680, 920, 600], "#a1309b"),

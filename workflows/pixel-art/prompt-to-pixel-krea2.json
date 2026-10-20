@@ -1,8 +1,8 @@
 {
   "id": "2d186040-4034-5e73-8463-93bea5571b46",
   "revision": 0,
-  "last_node_id": 29,
-  "last_link_id": 33,
+  "last_node_id": 31,
+  "last_link_id": 36,
   "nodes": [
     {
       "id": 1,
@@ -98,7 +98,7 @@
       },
       "widgets_values": [
         "k2-pixel64.safetensors",
-        1.0
+        0.6
       ],
       "title": "Pixel-art LoRA",
       "color": "#432",
@@ -213,7 +213,8 @@
           "name": "pixels",
           "type": "INT",
           "links": [
-            31
+            31,
+            34
           ],
           "slot_index": 1
         },
@@ -884,7 +885,7 @@
         true,
         false
       ],
-      "title": "Krea 2 Pixel Art Refiner (width/height = LoRA grid)",
+      "title": "Krea 2 Pixel Art Refiner",
       "color": "#432",
       "bgcolor": "#653"
     },
@@ -1051,7 +1052,7 @@
         300
       ],
       "flags": {},
-      "order": 25,
+      "order": 27,
       "mode": 0,
       "inputs": [
         {
@@ -1083,7 +1084,7 @@
         420
       ],
       "flags": {},
-      "order": 26,
+      "order": 28,
       "mode": 0,
       "inputs": [
         {
@@ -1100,6 +1101,83 @@
         "pixel/prompt_to_pixel_krea2_x8"
       ],
       "title": "Save preview (x8)"
+    },
+    {
+      "id": 30,
+      "type": "PrimitiveInt",
+      "pos": [
+        1980,
+        640
+      ],
+      "size": [
+        320,
+        58
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            35
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        0
+      ],
+      "title": "No height check"
+    },
+    {
+      "id": 31,
+      "type": "ComfySwitchNode",
+      "pos": [
+        1980,
+        720
+      ],
+      "size": [
+        320,
+        80
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "on_false",
+          "type": "INT",
+          "link": 34
+        },
+        {
+          "name": "on_true",
+          "type": "INT",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "INT",
+          "links": [
+            36
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfySwitchNode"
+      },
+      "widgets_values": [
+        false
+      ],
+      "title": "Height check: author's refiner?"
     },
     {
       "id": 19,
@@ -1120,6 +1198,14 @@
           "name": "images",
           "type": "IMAGE",
           "link": 27
+        },
+        {
+          "name": "expected_height",
+          "type": "INT",
+          "link": 36,
+          "widget": {
+            "name": "expected_height"
+          }
         }
       ],
       "outputs": [
@@ -1192,7 +1278,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "Prompt -> pixel art with Krea 2\n\n1. Pixel Art Prompt (green): type just the SUBJECT. The template adds the game-art style, view, detail, colours,\n   outline and a plain background. For Krea 2 it asks for a big subject (fill 85%) and uses the k2-pixel\n   trigger \"pixel art\" (lora_trigger off for k2-pixel64, which the author says works best without it).\n2. Model: Krea 2 Turbo (Krea 2 Community Licence), 8 steps, no CFG, 1024 px. \"Pixel-art LoRA\" = k2-pixel32 / 64 / 128\n   (MIT): the LoRA draws on a grid of that many cells across the image. Pick it from the size you want.\n3. Clean-up, switch \"Clean-up: author's refiner?\":\n   off (default) = Pixelize: finds the subject, makes it 'pixels' tall, automatic palette (like prompt-to-pixel).\n   on = Krea 2 Pixel Art Refiner: collapses the LoRA's own grid (set its width/height = the LoRA's number), most\n   common colour per cell, 24 colours, then Grid Cutout keeps the cells BiRefNet marks as subject.\n   The sprite is then as tall as the subject is in grid cells (about 85% of the grid), not 'pixels'.\n4. Run. Saved to output/pixel/:\n   prompt_to_pixel_krea2_*.png      native size, transparent -> use in games\n   prompt_to_pixel_krea2_x8_*.png   zoomed preview\n   prompt_to_pixel_krea2_raw_*.png  the generated 1024 px image\n\"Pixel Art Check\" must say PASS (it does not check the height: the refiner's height follows the drawing)."
+        "Prompt -> pixel art with Krea 2\n\n1. Pixel Art Prompt (green): type just the SUBJECT. The template adds the game-art style, view, detail, colours,\n   outline and a plain background. For Krea 2 it asks for a big subject (fill 85%) and uses the k2-pixel\n   trigger \"pixel art\" (lora_trigger off for k2-pixel64, which the author says works best without it).\n2. Model: Krea 2 Turbo (Krea 2 Community Licence), 8 steps, no CFG, 1024 px. \"Pixel-art LoRA\" = k2-pixel32 / 64 / 128\n   (MIT): the LoRA draws on a grid of that many cells across the image. Pick it from the size you want.\n3. Clean-up, the three \"...: author's refiner?\" switches (set all three the same):\n   off (default) = Pixelize: finds the subject, makes it 'pixels' tall, automatic palette (like prompt-to-pixel).\n   on = Krea 2 Pixel Art Refiner: collapses the LoRA's own grid (set its width and height to the LoRA's number), most\n   common colour per cell, 24 colours, then Grid Cutout keeps the cells BiRefNet marks as subject.\n   The sprite is then as tall as the subject is in grid cells (about 85% of the grid), not 'pixels'.\n4. Run. Saved to output/pixel/:\n   prompt_to_pixel_krea2_*.png      native size, transparent -> use in games\n   prompt_to_pixel_krea2_x8_*.png   zoomed preview\n   prompt_to_pixel_krea2_raw_*.png  the generated 1024 px image\n\"Pixel Art Check\" must say PASS. With Pixelize it also checks the subject height; with the refiner it doesn't (the\nheight follows the drawing)."
       ],
       "title": "READ ME"
     }
@@ -1461,6 +1547,30 @@
       16,
       3,
       "STRING"
+    ],
+    [
+      34,
+      23,
+      1,
+      31,
+      0,
+      "INT"
+    ],
+    [
+      35,
+      30,
+      0,
+      31,
+      1,
+      "INT"
+    ],
+    [
+      36,
+      31,
+      0,
+      19,
+      1,
+      "INT"
     ]
   ],
   "groups": [
