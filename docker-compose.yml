@@ -1,5 +1,4 @@
-# ComfyUI with the Pixel Studio workflows and nodes. Pixel Studio (a separate app) connects to it as a
-# compute source at http://<this machine>:8188.
+# ComfyUI with the Pixel Studio workflows and nodes, at http://<this machine>:8188.
 name: comfyui
 
 services:
@@ -36,8 +35,7 @@ services:
       - ${COMFY_OUTPUT_DIR:-./output}:/opt/ComfyUI/output
 
   # Style LoRA trainer (ostris ai-toolkit), on demand only: docker compose --profile train up -d trainer
-  # Pixel Studio writes datasets and configs into TRAIN_DIR and reads the output back, so TRAIN_DIR must be
-  # the same folder as the app's <data>/train (both on this machine). See trainer/README.md.
+  # Datasets, configs and results live in TRAIN_DIR. See trainer/README.md.
   # First start downloads the image (~6.6 GB) and the Z-Image Turbo training files. See trainer/README.md.
   trainer:
     image: ostris/aitoolkit:0.13.23
