@@ -155,3 +155,4 @@ env `PSC_URL`; default `http://127.0.0.1:<PORT from .env, else 8188>`).
 | `models presets` | the preset table |
 | `token show` / `token rotate` | print or replace the gateway token (see [Gateway](#gateway)) |
 | `update [--no-up]` | `git pull --ff-only` (refuses on local changes or without an upstream), then `up` |
+| `cloud modal deploy [options]` / `cloud modal snippet` | deploy the [Modal job API](../cloud/README.md) and print the Pixel Studio `COMFY_SOURCES` entry; `--dry-run` shows what it would do; the live app `sprite-studio-comfy` needs `--live` |
