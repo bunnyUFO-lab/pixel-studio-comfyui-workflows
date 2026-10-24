@@ -45,7 +45,10 @@ whole result comes out of it, so any number of containers can run jobs side by s
 - `files`: the files ComfyUI's history lists (with the title of the node that saved them in `node`) **plus** every
   other file that appeared or changed under `output/` and `temp/` during the job (`node` is `""`). Clients need the
   second kind: nodes write siblings (`x.json`, `x.gif`) next to the listed file. `type` is `"output"` or `"temp"`.
-  The decoded total is capped at **256 MiB**; above it the job returns `status: "error"` and no files.
+  The decoded total is capped at **256 MiB**; above it the job returns `status: "error"` and no files. A file entry
+  carries either `data` (base64) or `url` (with `expires`, epoch seconds): an HTTPS GET with no headers returns the
+  bytes. Clients must accept both; Modal only ever sends `data`, RunPod sends `url` for large results (below).
+  `size` is always the decoded size.
 - `text`: text outputs of nodes, by node title.
 - `timing`: seconds. `boot` is the container's ComfyUI start time, charged to the first job that container ran (0 for
   later ones); `billed = boot + run`. The idle time before a container scales down is billed by the provider but
@@ -77,10 +80,42 @@ Clients poll `GET /v1/jobs/{id}` (a blocking POST would hit the 150 s web reques
 `GET /v1/info` is what a client needs before it can submit: it converts UI workflows to API graphs with `object_info`
 and checks `models` for what a workflow needs.
 
+## RunPod transport
+
+`cloud/runpod/handler.py` serves the same two documents on a RunPod Serverless queue endpoint
+(`https://api.runpod.ai/v2/<endpoint id>`, header `Authorization: Bearer <RunPod API key>`). The job document is the
+request's `input`, the result document is the status's `output`. Setup: [cloud/runpod/README.md](../cloud/runpod/README.md).
+
+| Does | RunPod call |
+| --- | --- |
+| submit | `POST /run {"input": <job document>}` -> `{"id", "status": "IN_QUEUE"}` |
+| status | `GET /status/{id}`: `IN_QUEUE` = queued, `IN_PROGRESS` = running (`output` is the progress object while it runs), `COMPLETED` = done (`output` is the result document), `FAILED` / `TIMED_OUT` = failed (`error`), `CANCELLED` = cancelled |
+| cancel | `POST /cancel/{id}` |
+| info | a job: `POST /run {"input": {"action": "info"}}`, `output` is the `info` document. RunPod has nothing that answers without a worker; the first call wakes one, which the next job reuses |
+| health | `GET /health` (workers and queue; wakes nothing) |
+| models | jobs `{"action": "download", "workflows": "pixel"}` (fills the network volume) and `{"action": "list_models", ...}` |
+
+Limits that shape the documents: `/run` takes at most **10 MB** of request JSON and RunPod keeps a `/run` result for
+**30 minutes**. No separate output limit is documented, so the worker assumes the same 10 MB on `output`:
+
+- **Inputs** travel inline, base64, with the whole request JSON at most **9 MiB** (`PSC_INLINE_MAX_BYTES`, default
+  9437184). A larger job is refused with an error naming the size (use the Modal source for it).
+- **Outputs**: when the encoded result is over the same budget, the worker uploads every file to the S3-compatible
+  bucket configured on the endpoint (`PSC_S3_*`) and returns presigned GET `url`s in place of `data`. Without a
+  bucket the result is `status: "error"` and says so. The bucket credentials live on the endpoint as RunPod secrets;
+  a client only does a plain GET.
+- One job at a time per worker; scale-out is more workers. A cancelled job's prompt is interrupted when the worker's
+  next job starts.
+
+A failed job (`FAILED`) is an infrastructure failure, as on Modal; a rejected graph or a failed node is a `COMPLETED`
+job whose result has `status: "error"`.
+
 ## What another provider implements
 
 Take a job document, call `job_runner.run_job(doc, proc, boot=..., rate=..., worker=...)` on a started
-`ComfyProcess`, return `job_runner.encode_result(result)`; map the transport's own submit/status calls onto the
-endpoints above (RunPod: `/run` and `/status`); serve `info` from `ComfyProcess.info()`.
+`ComfyProcess`, return `job_runner.encode_result(result)` (a file may carry `url` instead of `data`); map the
+transport's own submit/status calls onto the endpoints above (RunPod does: see "RunPod transport"); serve `info` from
+`ComfyProcess.info()`.
 
-Try it: `python cloud/job_smoke.py --url <jobs url> --n 1` (needs `MODAL_KEY` / `MODAL_SECRET` in the environment).
+Try it: `python cloud/job_smoke.py --url <jobs url> --n 1` (needs `MODAL_KEY` / `MODAL_SECRET` in the environment), or
+`python cloud/job_smoke.py --runpod <endpoint id> --n 1` (needs `RUNPOD_API_KEY`).
