@@ -1,6 +1,6 @@
 """Benchmark the sprite-from-video motion models: every arm x sprite x driving clip x seed, on the local ComfyUI.
 
-    python tools/bench_video_models.py --sprites DIR --clips DIR [--arms A,B] [--seeds 11] [--out output/bench-video]
+    python tools/bench_scail_wan.py --sprites DIR --clips DIR [--arms A,B] [--seeds 11] [--out output/bench-video]
 
 Runs arm by arm (so each model loads once), skips jobs already in results.json (re-run to resume), and records for
 each job: execution time (from ComfyUI's own timestamps), peak GPU memory over the job (nvidia-smi, with the memory
@@ -22,6 +22,21 @@ from argparse import Namespace
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, ".claude", "skills", "comfyui", "scripts"))
 import comfy  # noqa: E402
+
+_http = comfy.http
+
+
+def _retrying_http(*args, **kwargs):
+    """ComfyUI drops connections now and then while a big model loads: retry instead of losing the run."""
+    for attempt in range(30):
+        try:
+            return _http(*args, **kwargs)
+        except (ConnectionError, TimeoutError, OSError):
+            time.sleep(10)
+    return _http(*args, **kwargs)
+
+
+comfy.http = _retrying_http
 
 WAN = os.path.join(ROOT, "workflows", "pixel-art", "sprite-from-video.json")
 SCAIL = os.path.join(ROOT, "workflows", "pixel-art", "sprite-from-video-scail2.json")
