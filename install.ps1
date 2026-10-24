@@ -15,6 +15,32 @@ function Test-Checkout([string]$Path) {
     return (Test-Path -LiteralPath (Join-Path $Path "docker-compose.yml")) -and (Test-Path -LiteralPath (Join-Path $Path "psc"))
 }
 
+# The user Path with $Bin appended, or $null when it is already there. $Raw is the unexpanded registry value; entries
+# are compared in their expanded form, case-insensitively, ignoring a trailing backslash. Existing entries are kept verbatim.
+function Get-UserPathUpdate([string]$Raw, [string]$Bin) {
+    $want = $Bin.TrimEnd("\")
+    $entries = @()
+    if ($Raw) { $entries = @($Raw -split ";" | Where-Object { $_ }) }
+    foreach ($e in $entries) {
+        if ([Environment]::ExpandEnvironmentVariables($e).TrimEnd("\") -ieq $want) { return $null }
+    }
+    return (@($entries) + $Bin) -join ";"
+}
+
+# A registry write does not tell running programs; broadcast WM_SETTINGCHANGE so new Explorer-launched terminals see it.
+function Send-EnvironmentChange {
+    try {
+        Add-Type -Namespace Psc -Name Native -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint flags, uint timeout, out System.UIntPtr result);
+"@
+        $out = [UIntPtr]::Zero
+        [void][Psc.Native]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, "Environment", 2, 5000, [ref]$out)
+    } catch {
+        Write-Host "NOTE: could not notify running programs; sign out and in to see the new PATH everywhere."
+    }
+}
+
 # 1. Docker first: nothing else works without it.
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "error: docker was not found. Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
@@ -73,19 +99,20 @@ $code = $LASTEXITCODE
 # 5. The command on PATH (user level), unless -NoPath.
 if (-not $NoPath) {
     $bin = Join-Path $Dir "bin"
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $entries = @()
-    if ($userPath) { $entries = @($userPath -split ";" | Where-Object { $_ }) }
-    $want = $bin.TrimEnd("\")
-    $present = $false
-    foreach ($e in $entries) { if ($e.TrimEnd("\") -ieq $want) { $present = $true } }
-    if (-not $present) {
-        $new = (@($entries) + $bin) -join ";"
-        [Environment]::SetEnvironmentVariable("Path", $new, "User")
-        Write-Host "Added $bin to your user PATH. Open a new terminal to use: pixel-studio-comfy doctor"
-    } else {
+    $envKey = Get-Item -LiteralPath "HKCU:\Environment"
+    # The raw value keeps %VAR% references and the registry kind (REG_EXPAND_SZ); GetEnvironmentVariable would flatten both.
+    $raw = [string]$envKey.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+    if ($envKey.GetValueNames() -contains "Path") { $kind = $envKey.GetValueKind("Path") }
+    $update = Get-UserPathUpdate $raw $bin
+    if ($null -eq $update) {
         Write-Host "$bin is already on your user PATH."
+    } else {
+        Set-ItemProperty -LiteralPath "HKCU:\Environment" -Name "Path" -Value $update -Type $kind
+        Send-EnvironmentChange
+        Write-Host "Added $bin to your user PATH. Open a new terminal to use: pixel-studio-comfy doctor"
     }
+    $want = $bin.TrimEnd("\")
     if (($env:Path -split ";" | ForEach-Object { $_.TrimEnd("\") }) -inotcontains $want) { $env:Path = "$($env:Path);$bin" }
 }
 

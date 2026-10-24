@@ -194,9 +194,14 @@ def check_models(stack, state):
 
 def check_gateway(stack):
     """With the gateway on: no token -> 401, and a path outside the allow list (/manager) -> 404 with the token."""
-    headers = stack.api_headers()
-    if not headers:
+    if not stack.sends_token:
+        return Check("SKIP", "gateway", "the token is only sent to this machine, not to --url / PSC_URL")
+    token = stack.psc_token()
+    if not token:
         return Check("FAIL", "gateway", "PSC_GATEWAY=1 but PSC_TOKEN is empty in .secrets.env: run pixel-studio-comfy token show")
+    if not core.valid_token(token):
+        return Check("FAIL", "gateway", "PSC_TOKEN in .secrets.env is not valid (32+ of A-Za-z0-9_-): run pixel-studio-comfy token rotate")
+    headers = stack.api_headers()
     try:
         anon = stack.http_status("/system_stats")
         closed = stack.http_status("/manager/queue/status", headers)

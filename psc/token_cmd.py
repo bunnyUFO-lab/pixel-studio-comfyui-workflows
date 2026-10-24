@@ -38,12 +38,15 @@ def ensure_token(stack):
     """The token from .secrets.env; created (and the file too, from the example) when empty."""
     token = current_token(stack)
     if token:
+        if not core.valid_token(token):
+            raise CliError("PSC_TOKEN in .secrets.env is not valid (it needs 32 or more of A-Z a-z 0-9 _ -): "
+                           "run pixel-studio-comfy token rotate")
         return token
     text = stack.read_text(".secrets.env")
     if text is None:
         text = stack.read_text(".secrets.env.example") or ""
     token = new_token()
-    stack.write_text(".secrets.env", set_secret(text, KEY, token))
+    stack.write_text(".secrets.env", set_secret(text, KEY, token), private=True)
     return token
 
 
@@ -57,12 +60,14 @@ def cmd_rotate(args, stack):
     if text is None:
         text = stack.read_text(".secrets.env.example") or ""
     token = new_token()
-    stack.write_text(".secrets.env", set_secret(text, KEY, token))
-    if stack.gateway:
+    stack.write_text(".secrets.env", set_secret(text, KEY, token), private=True)
+    if stack.gateway and stack.service_state("gateway") == "running":
         # restart would keep the old environment: the container must be recreated to read .secrets.env again
         code = stack.compose("up", "-d", "--no-deps", "--force-recreate", "gateway", capture=True).returncode
         if code:
             raise CliError("the new token is saved but the gateway could not be restarted; run: pixel-studio-comfy up")
+    elif stack.gateway:
+        print("note: the gateway is not running; the new token is saved and the next `pixel-studio-comfy up` uses it.", file=sys.stderr)
     else:
         print("note: the gateway is off (PSC_GATEWAY=1 is not in .env); the new token is saved for when it is on.", file=sys.stderr)
     print(token, flush=True)

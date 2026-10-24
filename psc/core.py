@@ -68,6 +68,14 @@ def compose_files(env):
     return ["docker-compose.yml", "docker/gateway.compose.yml"] if gateway_enabled(env) else []
 
 
+TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,}")
+
+
+def valid_token(token):
+    """A gateway token Caddy can match literally: 32+ of A-Za-z0-9_- (no wildcard, space, quote or brace)."""
+    return bool(TOKEN_RE.fullmatch(token or ""))
+
+
 def bearer_headers(token):
     return {"Authorization": "Bearer " + token} if token else {}
 

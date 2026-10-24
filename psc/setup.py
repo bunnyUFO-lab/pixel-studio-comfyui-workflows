@@ -94,6 +94,9 @@ def step_env(args, stack, interactive, host):
         overrides["MODELS"] = models
     if args.gateway:
         overrides["PSC_GATEWAY"] = "1"
+        # so plain `docker compose` picks up the override too; one value that works on Windows and Linux
+        overrides["COMPOSE_FILE"] = "docker-compose.yml;docker/gateway.compose.yml"
+        overrides["COMPOSE_PATH_SEPARATOR"] = ";"
     stack.write_text(".env", render_env(text, overrides))
     say("wrote .env (preset: %s)" % label)
     if args.lan:
@@ -129,7 +132,7 @@ def step_secrets(args, stack, interactive):
                 values[key] = token
     new_text, filled = fill_secrets(text, values)
     if existing is None or new_text != existing:
-        stack.write_text(".secrets.env", new_text)
+        stack.write_text(".secrets.env", new_text, private=True)
     keys = core.parse_env(new_text)
     shown = ", ".join("%s %s" % (k, "set" if keys.get(k) else "empty") for k in SECRET_KEYS if k in keys)
     say("%s %s (%s)" % (".secrets.env", "written" if existing is None else "kept", shown or "no keys"))

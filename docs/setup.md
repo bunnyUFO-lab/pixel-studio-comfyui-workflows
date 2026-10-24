@@ -98,7 +98,7 @@ By default ComfyUI has no authentication, so new installs listen on `127.0.0.1` 
 (Tailscale, LAN) with a password, turn on the opt-in gateway, a Caddy proxy that requires `Authorization: Bearer <token>`:
 
 ```sh
-pixel-studio-comfy setup --gateway --lan     # new install: writes PSC_GATEWAY=1 and a random PSC_TOKEN
+pixel-studio-comfy setup --gateway --lan     # new install: writes PSC_GATEWAY=1, COMPOSE_FILE and a random PSC_TOKEN
 pixel-studio-comfy token show                # print the token
 pixel-studio-comfy token rotate              # new token, gateway restarted
 ```
@@ -116,15 +116,23 @@ page, `/manager` and `/userdata`, is **404**. In Pixel Studio add the source wit
 `/manager`. The gateway serves plain HTTP: use a trusted network or Tailscale.
 
 To turn it on for an existing install, add `PSC_GATEWAY=1` to `.env`, run `pixel-studio-comfy token show` once, then
-`pixel-studio-comfy up`. With plain `docker compose`, add the override file to every call:
-`docker compose -f docker-compose.yml -f docker/gateway.compose.yml up -d`. To turn it off, run `pixel-studio-comfy down`, remove `PSC_GATEWAY` from
-`.env` and run `up` again (the ComfyUI page is then available on the host as before).
+`pixel-studio-comfy up`. `setup --gateway` also writes `COMPOSE_FILE=docker-compose.yml;docker/gateway.compose.yml` and
+`COMPOSE_PATH_SEPARATOR=;` to `.env`, so plain `docker compose` uses the override too; on an existing install add those two lines
+yourself, or add `-f docker-compose.yml -f docker/gateway.compose.yml` to every `docker compose` call. Without the override,
+`docker compose up -d` would publish ComfyUI's own port and leave the gateway orphaned. The token must be 32 or more of
+`A-Z a-z 0-9 _ -` (`token rotate` makes one); the gateway refuses to start with anything else. `status --url` and `doctor
+--url` send the token only to `127.0.0.1` / `localhost`. To turn the gateway off, run `pixel-studio-comfy down`, remove
+`PSC_GATEWAY`, `COMPOSE_FILE` and `COMPOSE_PATH_SEPARATOR` from `.env` and run `up` again (the ComfyUI page is then available on the host as before).
 
 ## Everyday commands
 
 `bin/pixel-studio-comfy` (Linux, Git Bash) or `bin\pixel-studio-comfy.cmd` (Windows) wraps the Docker commands; once the
 installer has put it on PATH, use `pixel-studio-comfy`. `python -m psc <command>` from the repository folder does the same.
 `down` never removes the model volumes.
+
+With the gateway on, use the CLI, or add `-f docker-compose.yml -f docker/gateway.compose.yml` to every `docker compose`
+call (not needed when `.env` has the `COMPOSE_FILE` line from `setup --gateway`); a bare `docker compose` would otherwise
+drop the gateway.
 
 | Task | CLI | Docker |
 |---|---|---|

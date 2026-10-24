@@ -52,6 +52,8 @@ else
     echo "Cloning $REPO_URL ($ref) into $dir"
     git clone --branch "$ref" "$REPO_URL" "$dir"
 fi
+# The shim must not depend on the folder it was installed from: make the path absolute now that the folder exists.
+dir=$(cd "$dir" && pwd)
 
 py=""
 for cand in python3 python "py -3"; do

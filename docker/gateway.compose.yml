@@ -17,11 +17,13 @@ services:
     env_file:                    # PSC_TOKEN (and, harmlessly, the download tokens) come from here
       - path: .secrets.env
         required: true
-    # An empty PSC_TOKEN would make the header matcher accept "Bearer " alone: refuse to start instead.
+    # An empty PSC_TOKEN would make the header matcher accept "Bearer " alone, and a "*", space, quote or brace changes what
+    # Caddy matches: refuse to start instead.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         if [ -z "$$PSC_TOKEN" ]; then echo "PSC_TOKEN is empty in .secrets.env: run pixel-studio-comfy token show" >&2; exit 1; fi
+        case "$$PSC_TOKEN" in *[!A-Za-z0-9_-]*) echo "PSC_TOKEN may only contain A-Z a-z 0-9 _ -: run pixel-studio-comfy token rotate" >&2; exit 1;; esac
         exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro

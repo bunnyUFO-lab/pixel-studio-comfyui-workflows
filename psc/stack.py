@@ -5,6 +5,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 from psc import core
 
@@ -44,9 +45,20 @@ class Stack:
         except OSError:
             return None
 
-    def write_text(self, name, text):
-        """Write a file in the stack folder with LF endings (Python 3.9 has no newline= on Path.write_text)."""
-        with open(str(self.path(name)), "w", encoding="utf-8", newline="\n") as f:
+    def write_text(self, name, text, private=False):
+        """Write a file in the stack folder with LF endings (Python 3.9 has no newline= on Path.write_text).
+        private=True creates it readable by the owner only (0600; no effect on Windows) and tightens an existing file."""
+        path = str(self.path(name))
+        if private:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            f = os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+        else:
+            f = open(path, "w", encoding="utf-8", newline="\n")
+        with f:
             f.write(text)
 
     def read_env(self):
@@ -69,12 +81,24 @@ class Stack:
     def compose_files(self):
         return core.compose_files(self.read_env())
 
-    def api_headers(self):
-        """The Bearer header for ComfyUI requests: only with the gateway on and a PSC_TOKEN in .secrets.env."""
-        if not self.gateway:
-            return {}
+    def psc_token(self):
+        """PSC_TOKEN from .secrets.env as written ("" when absent); not checked for validity."""
         text = self.read_text(".secrets.env")
-        return core.bearer_headers(core.parse_env(text).get("PSC_TOKEN", "") if text else "")
+        return core.parse_env(text).get("PSC_TOKEN", "") if text else ""
+
+    @property
+    def sends_token(self):
+        """False when --url / PSC_URL points at another host: the local token goes only to this machine."""
+        if not self._url:
+            return True
+        return (urlparse(self._url if "://" in self._url else "http://" + self._url).hostname or "") in ("127.0.0.1", "localhost", "::1")
+
+    def api_headers(self):
+        """The Bearer header for ComfyUI requests: gateway on, a valid PSC_TOKEN, and a URL on this machine."""
+        token = self.psc_token()
+        if not self.gateway or not self.sends_token or not core.valid_token(token):
+            return {}
+        return core.bearer_headers(token)
 
     def http_status(self, path, headers=None, timeout=5):
         return http_status(self.url, path, headers, timeout)
