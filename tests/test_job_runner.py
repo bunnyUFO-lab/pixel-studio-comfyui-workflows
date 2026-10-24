@@ -282,21 +282,26 @@ with tempfile.TemporaryDirectory() as root:
     check("--cache-none" not in jr.JOB_ARGS and jr.JOB_ARGS == (), "A1: JOB_ARGS has no --cache-none")
     check(jr.output_node_ids(GRAPH, frozenset({"SaveImage"})) == ["7", "8"],
           "A1: output nodes are the classes with output_node true in object_info")
-    check(jr.output_node_ids(GRAPH) == ["7", "8", "9"],
-          "A1: without object_info, output nodes are the ones no other node links to (not the linked loader)")
+    check(jr.output_node_ids(GRAPH) == ["1", "7", "8", "9"],
+          "A1/N1: without object_info, every node is marked")
     chain = {"1": {"class_type": "A", "inputs": {}}, "2": {"class_type": "B", "inputs": {"x": ["1", 0], "n": 3}},
              "3": {"class_type": "C", "inputs": {"y": ["2", 0], "bad": ["99", 0]}}}
-    check(jr.output_node_ids(chain) == ["3"], "A1: fallback: only the end of a chain; a dangling link is not a node")
+    check(jr.output_node_ids(chain) == ["1", "2", "3"], "A1/N1: fallback: every node, including ones that feed others")
+    # N1: an output node (SaveDirections-like) that feeds a downstream node is marked in the fallback
+    saver = {"1": {"class_type": "SaveDirections", "inputs": {}}, "2": {"class_type": "Next", "inputs": {"d": ["1", 0]}}}
+    check(jr.MARKER_KEY in jr.mark_outputs(saver)["1"]["inputs"] and jr.MARKER_KEY in jr.mark_outputs(saver)["2"]["inputs"]
+          and jr.MARKER_KEY not in saver["1"]["inputs"],
+          "N1: fallback marks an output node that feeds another node (and does not mutate the caller's graph)")
     keep = {"1": {"class_type": "SaveImage", "inputs": {jr.MARKER_KEY: "mine"}}}
     check(jr.mark_outputs(keep, frozenset({"SaveImage"}))["1"]["inputs"][jr.MARKER_KEY] == "mine",
           "A1: an input the node already has is never overwritten")
-    # object_info unreadable -> the fallback marks the unlinked nodes, and a later job tries object_info again
+    # object_info unreadable -> the fallback marks every node, and a later job tries object_info again
     Fake.object_info, Fake.submitted = None, []
     fresh = FakeProc(os.path.join(root, "fresh"), proc.url)
     jr.run_job(job(), fresh)
-    check(all(jr.MARKER_KEY in Fake.submitted[0][n]["inputs"] for n in ("7", "8", "9"))
-          and jr.MARKER_KEY not in Fake.submitted[0]["1"]["inputs"] and not hasattr(fresh, "_psc_output_classes"),
-          "A1: object_info unreadable -> fallback marks the unlinked nodes and is not cached")
+    check(all(jr.MARKER_KEY in Fake.submitted[0][n]["inputs"] for n in ("1", "7", "8", "9"))
+          and not hasattr(fresh, "_psc_output_classes"),
+          "A1/N1: object_info unreadable -> fallback marks every node and is not cached")
     Fake.object_info = {"SaveImage": {"output_node": True}}
     jr.run_job(job(), fresh)
     jr.run_job(job(), fresh)
@@ -341,6 +346,25 @@ with tempfile.TemporaryDirectory() as root:
         check(took < 15 and "TimeoutError" in str(e) and Fake.interrupts == 1,
               f"A4: timeout 3600 clamped to max_timeout=1 -> timed out and interrupted after {took:.1f}s ({e})")
     check(len(recycled) == 1 and "TimeoutError" in recycled[0], f"A2: a timeout recycles the container ({recycled})")
+    # Cancel (Modal raises a BaseException in the waiting thread): ComfyUI is interrupted, the exception propagates,
+    # and nothing is recycled by the guard (it only catches Exception).
+    class Cancelled(BaseException):
+        pass
+    real_sleep = jr.time.sleep
+    def cancelling_sleep(t):
+        if t == 0.5:                # _wait_history's poll; the fake server and _wait_idle sleep other amounts
+            raise Cancelled()
+        real_sleep(t)
+    Fake.mode, Fake.interrupts = "hang", 0
+    jr.time.sleep = cancelling_sleep
+    recycled2 = []
+    try:
+        jr.run_job_guarded(job(timeout=3600), proc, recycled2.append)
+        check(False, "cancel: should propagate")
+    except Cancelled:
+        check(Fake.interrupts == 1 and recycled2 == [], f"cancel: ComfyUI is interrupted once and the cancel propagates ({Fake.interrupts}, {recycled2})")
+    finally:
+        jr.time.sleep = real_sleep
     check(os.listdir(proc.output_dir) == ["old.png"] and os.listdir(proc.input_dir) == [],
           "A2: the timed-out job's outputs and inputs are deleted (no leak into the next job)")
     Fake.mode = "ok"
