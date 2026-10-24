@@ -48,6 +48,7 @@ Modal's cloud GPUs instead, see [cloud/README.md](../cloud/README.md).
 | `--project-name NAME` | Compose project name, to run a second stack beside another |
 | `--output-dir PATH` | where outputs go (`COMFY_OUTPUT_DIR`) |
 | `--civitai-token`, `--hf-token` | fill an empty token in `.secrets.env` (else the `CIVITAI_TOKEN` / `HF_TOKEN` environment variables; interactive runs ask) |
+| `--gateway` | put the [gateway](#gateway) in front of ComfyUI (new `.env` only) |
 | `--no-up` | write the files, do not start or run `doctor` |
 | `-y`, `--yes` | never prompt |
 
@@ -91,11 +92,47 @@ a `CIVITAI_TOKEN` and/or `HF_TOKEN` (both free). Without them those downloads ar
 Set `COMFY_OUTPUT_DIR` and `COMFY_INPUT_DIR` in `.env` to keep inputs and outputs on another drive (examples in
 `.env.all`). Models are kept in a Docker volume.
 
+## Gateway
+
+By default ComfyUI has no authentication, so new installs listen on `127.0.0.1` only. To reach it from other machines
+(Tailscale, LAN) with a password, turn on the opt-in gateway, a Caddy proxy that requires `Authorization: Bearer <token>`:
+
+```sh
+pixel-studio-comfy setup --gateway --lan     # new install: writes PSC_GATEWAY=1, COMPOSE_FILE and a random PSC_TOKEN
+pixel-studio-comfy token show                # print the token
+pixel-studio-comfy token rotate              # new token, gateway restarted
+```
+
+With the gateway on, only `PORT` is published (by the gateway, not ComfyUI), a missing or wrong token gets **401**, and with
+a valid token only the paths Pixel Studio uses pass (`/prompt`, `/history`, `/view`, `/upload/image`, `/object_info`, `/ws`,
+`/queue`, `/interrupt`, `/system_stats`, `/pixelstudio/*`, each also under `/api`); everything else, including the ComfyUI
+page, `/manager` and `/userdata`, is **404**. In Pixel Studio add the source with the header, which `setup --gateway` prints:
+
+```json
+[{"name": "pc", "url": "http://<this machine>:8188", "headers": {"Authorization": "Bearer <token>"}}]
+```
+
+`status` and `doctor` send the token themselves, and `doctor` checks that the gateway answers 401 without it and 404 for
+`/manager`. The gateway serves plain HTTP: use a trusted network or Tailscale.
+
+To turn it on for an existing install, add `PSC_GATEWAY=1` to `.env`, run `pixel-studio-comfy token show` once, then
+`pixel-studio-comfy up`. `setup --gateway` also writes `COMPOSE_FILE=docker-compose.yml;docker/gateway.compose.yml` and
+`COMPOSE_PATH_SEPARATOR=;` to `.env`, so plain `docker compose` uses the override too; on an existing install add those two lines
+yourself, or add `-f docker-compose.yml -f docker/gateway.compose.yml` to every `docker compose` call. Without the override,
+`docker compose up -d` would publish ComfyUI's own port and leave the gateway orphaned. The token must be 32 or more of
+`A-Z a-z 0-9 _ -` (`token rotate` makes one); the gateway refuses to start with anything else. `status --url` and `doctor
+--url` send the token only to `127.0.0.1` / `localhost`. To turn the gateway off, run `pixel-studio-comfy down`, remove
+`PSC_GATEWAY`, `COMPOSE_FILE` and `COMPOSE_PATH_SEPARATOR` from `.env` and run `up` again (the ComfyUI page is then available on the host as before).
+
 ## Everyday commands
 
 `bin/pixel-studio-comfy` (Linux, Git Bash) or `bin\pixel-studio-comfy.cmd` (Windows) wraps the Docker commands; once the
 installer has put it on PATH, use `pixel-studio-comfy`. `python -m psc <command>` from the repository folder does the same.
 `down` never removes the model volumes.
+
+With the gateway on, use the CLI, or add `-f docker-compose.yml -f docker/gateway.compose.yml` to every `docker compose`
+call (not needed when `.env` has the `COMPOSE_FILE` line from `setup --gateway`); a bare `docker compose` would otherwise
+drop the gateway.
 
 | Task | CLI | Docker |
 |---|---|---|
@@ -124,4 +161,5 @@ env `PSC_URL`; default `http://127.0.0.1:<PORT from .env, else 8188>`).
 | `models list [PRESET\|WORKFLOW ...]` | required models and whether they are present (default: the `.env` preset) |
 | `models pull PRESET\|WORKFLOW ...` | download missing models (`models get` is the same); does not edit `.env` |
 | `models presets` | the preset table |
+| `token show` / `token rotate` | print or replace the gateway token (see [Gateway](#gateway)) |
 | `update [--no-up]` | `git pull --ff-only` (refuses on local changes or without an upstream), then `up` |

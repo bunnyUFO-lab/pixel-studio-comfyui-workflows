@@ -2,13 +2,15 @@
 import json
 import os
 import subprocess
+import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 from psc import core
 
 # Compose gives the shell environment priority over .env, so these count when set there.
-ENV_KEYS = ("PORT", "MODELS", "COMPOSE_PROJECT_NAME", "COMFYUI_REF", "COMFY_OUTPUT_DIR", "BIND_ADDRESS")
+ENV_KEYS = ("PORT", "MODELS", "COMPOSE_PROJECT_NAME", "COMFYUI_REF", "COMFY_OUTPUT_DIR", "BIND_ADDRESS", "PSC_GATEWAY")
 
 
 class CliError(Exception):
@@ -72,8 +74,34 @@ class Stack:
     def url(self):
         return core.base_url(self.read_env(), self._url)
 
+    @property
+    def gateway(self):
+        return core.gateway_enabled(self.read_env())
+
     def compose_files(self):
-        return []  # extra -f files (an override) go here
+        return core.compose_files(self.read_env())
+
+    def psc_token(self):
+        """PSC_TOKEN from .secrets.env as written ("" when absent); not checked for validity."""
+        text = self.read_text(".secrets.env")
+        return core.parse_env(text).get("PSC_TOKEN", "") if text else ""
+
+    @property
+    def sends_token(self):
+        """False when --url / PSC_URL points at another host: the local token goes only to this machine."""
+        if not self._url:
+            return True
+        return (urlparse(self._url if "://" in self._url else "http://" + self._url).hostname or "") in ("127.0.0.1", "localhost", "::1")
+
+    def api_headers(self):
+        """The Bearer header for ComfyUI requests: gateway on, a valid PSC_TOKEN, and a URL on this machine."""
+        token = self.psc_token()
+        if not self.gateway or not self.sends_token or not core.valid_token(token):
+            return {}
+        return core.bearer_headers(token)
+
+    def http_status(self, path, headers=None, timeout=5):
+        return http_status(self.url, path, headers, timeout)
 
     def compose(self, *args, capture=False, timeout=None):
         cmd = ["docker", "compose"]
@@ -111,6 +139,17 @@ class Stack:
 
     def http_json(self, path, timeout=5, headers=None):
         return http_json(self.url, path, timeout, headers)
+
+
+def http_status(url, path, headers=None, timeout=5):
+    """HTTP status code of a GET (an error status is returned, not raised); OSError when nothing answers."""
+    req = urllib.request.Request(url.rstrip("/") + path, headers=headers or {})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            return resp.status
+    except urllib.error.HTTPError as e:
+        return e.code
 
 
 def http_json(url, path, timeout=5, headers=None):

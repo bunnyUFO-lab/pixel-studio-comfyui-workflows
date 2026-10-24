@@ -178,6 +178,149 @@ sa = p3.parse_args(["setup", "--yes", "--no-up", "--port", "8189", "--models", "
 check((sa.yes, sa.no_up, sa.port, sa.models, sa.project_name, sa.lan) == (True, True, 8189, "a/b", "psc-smoke", True), "parser: setup options")
 check(p3.parse_args(["update", "--no-up"]).no_up is True, "parser: update --no-up")
 
+# ---- 1c: gateway detection, token helpers, doctor gateway checks
+from psc import token_cmd  # noqa: E402
+from psc.stack import Stack  # noqa: E402
+
+tok = token_cmd.new_token()
+check(len(tok) >= 43 and all(ch.isalnum() or ch in "-_" for ch in tok), "new_token: 32 random bytes, URL-safe characters")
+check(token_cmd.new_token() != token_cmd.new_token(), "new_token: differs each time")
+check(token_cmd.set_secret("A=1\nPSC_TOKEN=\nB=2\n", "PSC_TOKEN", "x") == "A=1\nPSC_TOKEN=x\nB=2\n", "set_secret: replaces an empty value")
+check(token_cmd.set_secret("PSC_TOKEN=old\n", "PSC_TOKEN", "new") == "PSC_TOKEN=new\n", "set_secret: replaces a set value (rotate)")
+check(token_cmd.set_secret("# PSC_TOKEN=comment\nA=1\n", "PSC_TOKEN", "n") == "# PSC_TOKEN=comment\nA=1\nPSC_TOKEN=n\n", "set_secret: appends when only a comment mentions the key")
+check(token_cmd.set_secret("A=1\r\nPSC_TOKEN=\r\n", "PSC_TOKEN", "x") == "A=1\r\nPSC_TOKEN=x\r\n", "set_secret: keeps CRLF")
+check(token_cmd.set_secret("A=1", "PSC_TOKEN", "x") == "A=1\nPSC_TOKEN=x\n", "set_secret: file without a final newline")
+
+check(core.gateway_enabled({"PSC_GATEWAY": "1"}) and core.gateway_enabled({"PSC_GATEWAY": "true"}), "gateway_enabled: 1 and true")
+check(not core.gateway_enabled({}) and not core.gateway_enabled({"PSC_GATEWAY": "0"}) and not core.gateway_enabled({"PSC_GATEWAY": ""}), "gateway_enabled: off by default, 0, empty")
+check(core.compose_files({}) == [] and core.compose_files({"PSC_GATEWAY": "1"}) == ["docker-compose.yml", "docker/gateway.compose.yml"], "compose_files: none without the gateway, two files with it")
+check(core.bearer_headers("abc") == {"Authorization": "Bearer abc"} and core.bearer_headers("") == {}, "bearer_headers")
+
+
+GOOD = "t" * 40
+
+
+class FakeStack:
+    """Just enough of Stack for check_gateway: statuses by (path, authorised)."""
+
+    url = "http://127.0.0.1:8189"
+    sends_token = True
+
+    def __init__(self, headers, statuses):
+        self.headers, self.statuses = headers, statuses
+
+    def psc_token(self):
+        return self.headers.get("Authorization", "")[len("Bearer "):]
+
+    def api_headers(self):
+        return self.headers
+
+    def http_status(self, path, headers=None, timeout=5):
+        code = self.statuses[(path, bool(headers))]
+        if code is None:
+            raise OSError("down")
+        return code
+
+
+good = FakeStack({"Authorization": "Bearer " + GOOD}, {("/system_stats", False): 401, ("/manager/queue/status", True): 404})
+check(local.check_gateway(good).status == "OK", "doctor gateway: 401 without a token and 404 for /manager -> OK")
+open_gw = FakeStack({"Authorization": "Bearer " + GOOD}, {("/system_stats", False): 200, ("/manager/queue/status", True): 404})
+check(local.check_gateway(open_gw).status == "FAIL", "doctor gateway: answering without a token -> FAIL")
+manager_open = FakeStack({"Authorization": "Bearer " + GOOD}, {("/system_stats", False): 401, ("/manager/queue/status", True): 200})
+check(local.check_gateway(manager_open).status == "FAIL", "doctor gateway: /manager reachable -> FAIL")
+check(local.check_gateway(FakeStack({}, {})).status == "FAIL", "doctor gateway: empty PSC_TOKEN -> FAIL")
+down = FakeStack({"Authorization": "Bearer " + GOOD}, {("/system_stats", False): None, ("/manager/queue/status", True): None})
+check(local.check_gateway(down).status == "WARN", "doctor gateway: no answer -> WARN")
+
+import tempfile  # noqa: E402
+from psc.stack import CliError  # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    st = Stack(tmp)
+    check(st.compose_files() == [] and st.api_headers() == {} and not st.gateway, "Stack: gateway off by default, no header")
+    with open(os.path.join(tmp, ".env"), "w") as f:
+        f.write("PSC_GATEWAY=1\n")
+    check(st.compose_files() == ["docker-compose.yml", "docker/gateway.compose.yml"] and st.gateway, "Stack: PSC_GATEWAY=1 adds the override file")
+    check(st.api_headers() == {}, "Stack: gateway on but no .secrets.env -> no header")
+    with open(os.path.join(tmp, ".secrets.env"), "w") as f:
+        f.write("PSC_TOKEN=" + GOOD + "\n")
+    check(st.api_headers() == {"Authorization": "Bearer " + GOOD}, "Stack: header from PSC_TOKEN in .secrets.env")
+    ensured = token_cmd.ensure_token(st)
+    check(ensured == GOOD, "ensure_token: keeps an existing token")
+    for bad in ("abc*", "secret123", "x" * 31, "a b" + "c" * 40, "a\"" + "c" * 40, "a}" + "c" * 40, ""):
+        check(not core.valid_token(bad), "valid_token: rejects %r" % bad[:12])
+    check(core.valid_token(GOOD) and core.valid_token(token_cmd.new_token()) and core.valid_token("A-_" + "z" * 29), "valid_token: accepts generated and 32+ of A-Za-z0-9_-")
+    check(not core.valid_token(GOOD + "\n"), "valid_token: no trailing newline")
+    with open(os.path.join(tmp, ".secrets.env"), "w") as f:
+        f.write("PSC_TOKEN=abc*\n")
+    check(st.api_headers() == {}, "Stack: an invalid PSC_TOKEN is never sent")
+    try:
+        token_cmd.ensure_token(st)
+        check(False, "ensure_token: refuses an invalid token")
+    except CliError as e:
+        check("token rotate" in str(e) and "abc*" not in str(e), "ensure_token: refuses an invalid token, names token rotate, does not print it")
+    check(local.check_gateway(st).status == "FAIL" and "rotate" in local.check_gateway(st).detail, "doctor gateway: invalid token -> FAIL")
+    with open(os.path.join(tmp, ".secrets.env"), "w") as f:
+        f.write("PSC_TOKEN=" + GOOD + "\n")
+    for u, sends in (("http://127.0.0.1:8189", True), ("http://localhost:9", True), ("http://other-host:8188", False), ("https://pod.example.com", False)):
+        check(Stack(tmp, u).sends_token is sends and (Stack(tmp, u).api_headers() != {}) is sends, "Stack: token %s for --url %s" % ("sent" if sends else "withheld", u))
+    check(Stack(tmp, None).sends_token and local.check_gateway(Stack(tmp, "http://other-host:8188")).status == "SKIP", "doctor gateway: SKIP for a non-local --url")
+    os.remove(os.path.join(tmp, ".secrets.env"))
+    created = token_cmd.ensure_token(st)
+    check(len(created) >= 43 and token_cmd.current_token(st) == created, "ensure_token: creates the file and the token")
+
+check(cli.build_parser().parse_args(["token", "show"]).func is token_cmd.cmd_show and cli.build_parser().parse_args(["token", "rotate"]).func is token_cmd.cmd_rotate, "parser: token show and rotate")
+check(cli.build_parser().parse_args(["setup", "--gateway"]).gateway is True, "parser: setup --gateway")
+with open(os.path.join(ROOT, "docker", "Caddyfile"), encoding="utf-8") as f:
+    caddyfile = f.read()
+check("{$PSC_TOKEN}" in caddyfile and "respond 401" in caddyfile and "respond 404" in caddyfile and caddyfile.index("handle @authed") < caddyfile.rindex("respond 401"),
+      "Caddyfile: token placeholder, 404 inside the authed block, 401 last")
+with open(os.path.join(ROOT, "docker", "gateway.compose.yml"), encoding="utf-8") as f:
+    override = f.read()
+check("!reset" in override and ":latest" not in override and "caddy:2." in override, "gateway.compose.yml: ports reset, pinned caddy tag")
+
+# The allow list is the security contract of the gateway: exactly these paths, each also under /api.
+ALLOWED = ["/prompt", "/history", "/history/*", "/view", "/upload/image", "/object_info", "/object_info/*", "/ws", "/queue",
+           "/interrupt", "/system_stats", "/pixelstudio/*"]
+allowed_lines = [ln.split() for ln in caddyfile.splitlines() if ln.strip().startswith("@allowed")]
+listed = allowed_lines[0][2:] if len(allowed_lines) == 1 and allowed_lines[0][:2] == ["@allowed", "path"] else None
+check(listed is not None and sorted(listed) == sorted(ALLOWED + ["/api" + p for p in ALLOWED]), "Caddyfile: @allowed is exactly the 12 paths and their /api twins")
+check(listed is not None and not any(p.rstrip("/*") in ("", "/manager", "/userdata", "/settings", "/internal", "/extensions", "/upload/mask", "/api")
+                                     or p.startswith(("/manager", "/userdata", "/settings", "/internal", "/api/manager", "/api/userdata")) or p in ("/*", "/api/*")
+                                     for p in listed), "Caddyfile: no /, /manager, /userdata, /settings or /internal in the allow list")
+check(len(allowed_lines) == 1 and caddyfile.count("reverse_proxy") == 1, "Caddyfile: one allow-list matcher, one proxy")
+check("case \"$$PSC_TOKEN\" in *[!A-Za-z0-9_-]*)" in override and 'if [ -z "$$PSC_TOKEN" ]' in override, "gateway.compose.yml: guard rejects an empty or out-of-charset token")
+
+# ---- gateway review: token rotate only recreates a running gateway; setup --gateway writes COMPOSE_FILE
+class RotateStack:
+    def __init__(self, root, state):
+        self.inner, self.state, self.calls, self.gateway = Stack(root), state, [], True
+
+    def read_text(self, *a):
+        return self.inner.read_text(*a)
+
+    def write_text(self, *a, **k):
+        return self.inner.write_text(*a, **k)
+
+    def service_state(self, service="comfyui"):
+        return self.state
+
+    def compose(self, *args, **k):
+        self.calls.append(args)
+        return types.SimpleNamespace(returncode=0)
+
+
+import contextlib  # noqa: E402
+import io  # noqa: E402
+
+for state, expect in (("running", 1), (None, 0), ("exited", 0)):
+    with tempfile.TemporaryDirectory() as rtmp:
+        rs = RotateStack(rtmp, state)
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            token_cmd.cmd_rotate(None, rs)
+        saved = rs.inner.read_text(".secrets.env")
+        check(len(rs.calls) == expect and "PSC_TOKEN=" + out.getvalue().strip() in saved, "token rotate: gateway %s -> %d recreate call(s), token saved" % (state, expect))
+
 # ---- 1b review: private writes, and setup never overwriting (temp folder, step_checks not called)
 import shutil  # noqa: E402
 import stat  # noqa: E402
@@ -201,13 +344,25 @@ try:
     shutil.copytree(os.path.join(ROOT, "workflows"), os.path.join(tmp, "workflows"))
     shutil.copy(os.path.join(ROOT, ".secrets.env.example"), os.path.join(tmp, ".secrets.env.example"))
     sargs = types.SimpleNamespace(port=None, lan=False, project_name=None, output_dir=None, models=None, preset="pixel",
-                                  civitai_token=None, hf_token=None)
+                                  civitai_token=None, hf_token=None, gateway=False)
     psc_setup.say = lambda text="": None
     psc_setup.step_env(sargs, st, False, None)
     psc_setup.step_secrets(sargs, st, False)
     first = (st.read_text(".env"), st.read_text(".secrets.env"))
     check(first[0] and "BIND_ADDRESS=127.0.0.1" in first[0] and first[1] is not None, "setup: first run writes .env and .secrets.env")
-    sargs2 = types.SimpleNamespace(**dict(vars(sargs), port=9999, lan=True))
+    check("COMPOSE_FILE" not in first[0], "setup: no COMPOSE_FILE without --gateway")
+    gtmp = tempfile.mkdtemp(prefix="psc-test-gw-")
+    try:
+        for name in ("env", "workflows"):
+            shutil.copytree(os.path.join(ROOT, name), os.path.join(gtmp, name))
+        gst = Stack(gtmp)
+        psc_setup.step_env(types.SimpleNamespace(**dict(vars(sargs), gateway=True)), gst, False, None)
+        genv = core.parse_env(gst.read_text(".env"))
+        check(genv["PSC_GATEWAY"] == "1" and genv["COMPOSE_FILE"] == "docker-compose.yml;docker/gateway.compose.yml" and genv["COMPOSE_PATH_SEPARATOR"] == ";",
+              "setup --gateway: writes PSC_GATEWAY, COMPOSE_FILE and COMPOSE_PATH_SEPARATOR")
+    finally:
+        shutil.rmtree(gtmp, ignore_errors=True)
+    sargs2 = types.SimpleNamespace(**dict(vars(sargs), port=9999, lan=True, gateway=True))
     psc_setup.step_env(sargs2, st, False, None)
     psc_setup.step_secrets(sargs2, st, False)
     check((st.read_text(".env"), st.read_text(".secrets.env")) == first, "setup: a second run with other flags leaves both files byte-identical")
