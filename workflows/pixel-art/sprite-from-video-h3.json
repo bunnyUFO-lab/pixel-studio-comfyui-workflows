@@ -1,0 +1,1535 @@
+{
+  "id": "4dab8e46-7c3c-5b94-9797-06a88292cf66",
+  "revision": 0,
+  "last_node_id": 37,
+  "last_link_id": 32,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        420,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            13,
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "minimax_h3_ref2va_pruned_w6a8.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax_h3_ref2va_pruned_w6a8.safetensors",
+        "default"
+      ],
+      "title": "MiniMax H3 Ref2VA (w6a8)"
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        0,
+        130
+      ],
+      "size": [
+        420,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ],
+      "title": "Qwen3-VL 32B text encoder (NVFP4)"
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [
+        0,
+        280
+      ],
+      "size": [
+        420,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            6,
+            22
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "minimax_h3_video_vae_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_int8_convrot.safetensors"
+      ],
+      "title": "Video VAE"
+    },
+    {
+      "id": 4,
+      "type": "VAELoader",
+      "pos": [
+        0,
+        380
+      ],
+      "size": [
+        420,
+        58
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "minimax_h3_audio_vae_fp32.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ],
+      "title": "Audio VAE"
+    },
+    {
+      "id": 10,
+      "type": "LoadImage",
+      "pos": [
+        460,
+        0
+      ],
+      "size": [
+        340,
+        400
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            2
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Pixel sprite",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 11,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        460,
+        440
+      ],
+      "size": [
+        340,
+        46
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "Keep sprite transparency"
+    },
+    {
+      "id": 12,
+      "type": "PrepareSpriteForVideo",
+      "pos": [
+        460,
+        530
+      ],
+      "size": [
+        340,
+        154
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "sprite",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "pixel_spec",
+          "type": "PIXEL_SPEC",
+          "links": [
+            25
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            11
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            12
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            4
+          ],
+          "slot_index": 4
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrepareSpriteForVideo"
+      },
+      "widgets_values": [
+        1024,
+        0.6,
+        "auto",
+        32
+      ],
+      "title": "Prepare sprite (integer upscale, /32)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 16,
+      "type": "PreviewAny",
+      "pos": [
+        460,
+        720
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 4
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Sprite info"
+    },
+    {
+      "id": 17,
+      "type": "LoadImage",
+      "pos": [
+        460,
+        880
+      ],
+      "size": [
+        340,
+        340
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Second view (optional, <Picture 2>)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 13,
+      "type": "VHS_LoadVideo",
+      "pos": [
+        840,
+        0
+      ],
+      "size": [
+        340,
+        520
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": []
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadVideo",
+        "cnr_id": "comfyui-videohelpersuite"
+      },
+      "widgets_values": {
+        "video": "example.mp4",
+        "force_rate": 24,
+        "custom_width": 0,
+        "custom_height": 0,
+        "frame_load_cap": 360,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "None",
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {}
+        }
+      },
+      "title": "Driving video",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 20,
+      "type": "MiniMaxH3ReferenceToVideo",
+      "pos": [
+        1220,
+        0
+      ],
+      "size": [
+        460,
+        620
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 5
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 7
+        },
+        {
+          "name": "ref_images.ref_image_0",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "name": "ref_images.ref_image_1",
+          "type": "IMAGE",
+          "link": 9
+        },
+        {
+          "name": "ref_videos.ref_video_0",
+          "type": "IMAGE",
+          "link": 10
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 11,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 12,
+          "widget": {
+            "name": "height"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            20
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ReferenceToVideo"
+      },
+      "widgets_values": [
+        "subject_definitions:\n<Subject 1> is the pixel-art game character from <Picture 1>: keep its exact shape, colours, outfit and proportions.\n<Subject 2> is the pixel-art rendering style of <Picture 1>: hard square pixels, a flat limited palette, thick dark outlines, no gradients, no blur, no anti-aliasing.\n<Subject 3> is the performance of the person in <Video 1>: their body movement and timing.\n\nsummary:\n[reference generation] <Subject 1> performs <Subject 3> in <Subject 2>, full body, centred, on the flat single-colour background of <Picture 1>, static front-on camera.\n\nretention_analysis:\n<Subject 1>: fully_preserved - shape, palette, outfit and size from <Picture 1>.\n<Subject 2>: fully_preserved - the output stays pixel art in every frame.\n<Subject 3>: attribute_transfer - <Video 1> supplies performance and timing only, not its photographic look, body, clothes or background.\n\ndetailed_description:\n[Shot 1] A static, locked-off, full-body front view. The flat background colour of <Picture 1> fills the frame and never changes; there is no floor, no shadow, no scenery and no text. <Subject 1> stands centred at the same size as in <Picture 1>, drawn in <Subject 2> with crisp square pixels and the same few flat colours. Throughout the clip <Subject 1> copies every movement of the person in <Video 1> beat for beat and with the same timing: each step, swing, crouch, jump and arm movement happens at the same moment and to the same extent. The limbs, head and any props of <Subject 1> move as rigid pixel-art parts, keeping their outlines unbroken and their colours flat; nothing melts, blurs or smears, and no new colours, highlights or textures appear. The character keeps its own proportions instead of the person's, and never turns into a realistic human. The camera never moves, pans or zooms, and the character never leaves the frame. The clip ends with <Subject 1> back in the pose it started in.\n\noverall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A",
+        1024,
+        1024,
+        124,
+        "match"
+      ],
+      "title": "Prompt + MiniMax H3 Ref2VA",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 21,
+      "type": "RandomNoise",
+      "pos": [
+        1720,
+        0
+      ],
+      "size": [
+        300,
+        82
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        11,
+        "randomize"
+      ],
+      "title": "Noise (seed here)"
+    },
+    {
+      "id": 22,
+      "type": "KSamplerSelect",
+      "pos": [
+        1720,
+        120
+      ],
+      "size": [
+        300,
+        58
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            18
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "res_multistep"
+      ]
+    },
+    {
+      "id": 23,
+      "type": "BasicScheduler",
+      "pos": [
+        1720,
+        220
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            19
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        20,
+        1.0
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 24,
+      "type": "BasicGuider",
+      "pos": [
+        1720,
+        370
+      ],
+      "size": [
+        300,
+        46
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 14
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 25,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        2060,
+        0
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 16
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 17
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 18
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 19
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 28,
+      "type": "VAEDecode",
+      "pos": [
+        2060,
+        150
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 21
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            23,
+            24
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 29,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        2060,
+        240
+      ],
+      "size": [
+        320,
+        420
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine",
+        "cnr_id": "comfyui-videohelpersuite"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "pixel/sprite_from_video_h3_raw",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 17,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {}
+        }
+      },
+      "title": "Raw video (motion check)"
+    },
+    {
+      "id": 30,
+      "type": "RepixelateFrames",
+      "pos": [
+        2420,
+        0
+      ],
+      "size": [
+        340,
+        250
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 24
+        },
+        {
+          "name": "pixel_spec",
+          "type": "PIXEL_SPEC",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixel_frames",
+          "type": "IMAGE",
+          "links": [
+            26
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            30
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RepixelateFrames"
+      },
+      "widgets_values": [
+        true,
+        18.0,
+        "dominant",
+        0,
+        "sprite",
+        0.7,
+        true,
+        true,
+        "none"
+      ],
+      "title": "Repixelate (height match, same grid + palette)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 31,
+      "type": "SaveSpriteSheet",
+      "pos": [
+        2420,
+        180
+      ],
+      "size": [
+        340,
+        330
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "sheet",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "links": [
+            27,
+            31
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            29
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "fps",
+          "type": "INT",
+          "links": [
+            32
+          ],
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveSpriteSheet"
+      },
+      "widgets_values": [
+        "pixel/sprite_from_video_h3",
+        3,
+        0,
+        false,
+        0,
+        0,
+        true,
+        8,
+        "anim",
+        4
+      ],
+      "title": "Save sprite sheet",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 32,
+      "type": "PixelArtCheck",
+      "pos": [
+        2800,
+        0
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            28
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "passed",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixelArtCheck"
+      },
+      "widgets_values": [
+        256,
+        0,
+        false
+      ],
+      "title": "Pixel Art Check"
+    },
+    {
+      "id": 33,
+      "type": "PreviewAny",
+      "pos": [
+        2800,
+        150
+      ],
+      "size": [
+        340,
+        200
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 28
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Check report"
+    },
+    {
+      "id": 34,
+      "type": "PreviewAny",
+      "pos": [
+        2800,
+        390
+      ],
+      "size": [
+        340,
+        160
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 29
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Sheet info"
+    },
+    {
+      "id": 36,
+      "type": "PreviewAny",
+      "pos": [
+        2800,
+        600
+      ],
+      "size": [
+        340,
+        160
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 30
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Re-pixelate info (colours, popping)"
+    },
+    {
+      "id": 37,
+      "type": "SpriteAnimationPreview",
+      "pos": [
+        3180,
+        0
+      ],
+      "size": [
+        520,
+        680
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 31
+        },
+        {
+          "name": "fps",
+          "type": "INT",
+          "link": 32,
+          "widget": {
+            "name": "fps"
+          }
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SpriteAnimationPreview"
+      },
+      "widgets_values": [
+        8,
+        6,
+        "checker",
+        "loop"
+      ],
+      "title": "Animation preview (playback)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 35,
+      "type": "Note",
+      "pos": [
+        2420,
+        560
+      ],
+      "size": [
+        560,
+        560
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Pixel sprite + driving video -> sprite sheet (MiniMax H3)\n\nThe MiniMax H3 version of pixel-art/sprite-from-video: same inputs and outputs, a different motion model.\nLicence: H3's community licence excludes the US, EU, UK and South Korea; use there needs a MiniMax commercial licence.\n1. Pixel sprite (blue) = <Picture 1>. Optional \"Second view\" (unmute it, e.g. the back from image-to-directions)\n   becomes <Picture 2>: name it in the prompt.\n2. Driving video (blue) = <Video 1>: one person, whole body, static camera. Read at 24 fps, 2-15 s.\n3. Prompt (green): H3 wants six sections in this order (subject_definitions, summary, retention_analysis,\n   detailed_description, overall_soundscape, non_diegetic_music). Describe the clip beat by beat in\n   detailed_description (350-500 words is best); keep \"<Video 1> supplies performance and timing only\".\n4. MiniMax H3 Ref2VA, 20 steps. length 124 = ~5 s (17k+5 frames at 24 fps). The sprite is upscaled to\n   ~1024 px: H3 smears small subjects. The generated audio is dropped.\n5. Re-pixelate + sprite sheet as in sprite-from-video; frame_step 3 keeps 8 fps of the 24.\nSaved to output/pixel/: sprite_from_video_h3_*.png (sheet), .json (Aseprite), .webp, _preview.png,\nand the raw video (pixel/sprite_from_video_h3_raw) to check the motion."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      10,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      10,
+      1,
+      11,
+      1,
+      "MASK"
+    ],
+    [
+      3,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      12,
+      4,
+      16,
+      0,
+      "STRING"
+    ],
+    [
+      5,
+      2,
+      0,
+      20,
+      0,
+      "CLIP"
+    ],
+    [
+      6,
+      3,
+      0,
+      20,
+      1,
+      "VAE"
+    ],
+    [
+      7,
+      4,
+      0,
+      20,
+      2,
+      "VAE"
+    ],
+    [
+      8,
+      12,
+      0,
+      20,
+      3,
+      "IMAGE"
+    ],
+    [
+      9,
+      17,
+      0,
+      20,
+      4,
+      "IMAGE"
+    ],
+    [
+      10,
+      13,
+      0,
+      20,
+      5,
+      "IMAGE"
+    ],
+    [
+      11,
+      12,
+      2,
+      20,
+      6,
+      "INT"
+    ],
+    [
+      12,
+      12,
+      3,
+      20,
+      7,
+      "INT"
+    ],
+    [
+      13,
+      1,
+      0,
+      23,
+      0,
+      "MODEL"
+    ],
+    [
+      14,
+      1,
+      0,
+      24,
+      0,
+      "MODEL"
+    ],
+    [
+      15,
+      20,
+      0,
+      24,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      16,
+      21,
+      0,
+      25,
+      0,
+      "NOISE"
+    ],
+    [
+      17,
+      24,
+      0,
+      25,
+      1,
+      "GUIDER"
+    ],
+    [
+      18,
+      22,
+      0,
+      25,
+      2,
+      "SAMPLER"
+    ],
+    [
+      19,
+      23,
+      0,
+      25,
+      3,
+      "SIGMAS"
+    ],
+    [
+      20,
+      20,
+      1,
+      25,
+      4,
+      "LATENT"
+    ],
+    [
+      21,
+      25,
+      0,
+      28,
+      0,
+      "LATENT"
+    ],
+    [
+      22,
+      3,
+      0,
+      28,
+      1,
+      "VAE"
+    ],
+    [
+      23,
+      28,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      24,
+      28,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      12,
+      1,
+      30,
+      1,
+      "PIXEL_SPEC"
+    ],
+    [
+      26,
+      30,
+      0,
+      31,
+      0,
+      "IMAGE"
+    ],
+    [
+      27,
+      31,
+      1,
+      32,
+      0,
+      "IMAGE"
+    ],
+    [
+      28,
+      32,
+      0,
+      33,
+      0,
+      "STRING"
+    ],
+    [
+      29,
+      31,
+      2,
+      34,
+      0,
+      "STRING"
+    ],
+    [
+      30,
+      30,
+      1,
+      36,
+      0,
+      "STRING"
+    ],
+    [
+      31,
+      31,
+      1,
+      37,
+      0,
+      "IMAGE"
+    ],
+    [
+      32,
+      31,
+      3,
+      37,
+      1,
+      "INT"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Models",
+      "bounding": [
+        -20,
+        -60,
+        460,
+        520
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Sprite + driving video",
+      "bounding": [
+        440,
+        -60,
+        760,
+        1300
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Animate (MiniMax H3)",
+      "bounding": [
+        1200,
+        -60,
+        1200,
+        760
+      ],
+      "color": "#88A",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Back to pixel art",
+      "bounding": [
+        2400,
+        -60,
+        760,
+        620
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5,
+      "offset": [
+        40,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}
