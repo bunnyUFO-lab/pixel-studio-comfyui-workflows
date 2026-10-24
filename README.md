@@ -19,6 +19,7 @@ these workflows and connect Pixel Studio to them.
 | [`pixel-art/sprite-edit`](workflows/pixel-art/sprite-edit.json) | Edits a sprite (or animation frames) from a prompt, keeping its size, grid and palette. `sprite-edit-ref` / `sprite-edit-refs` also take reference images. |
 | [`pixel-art/sprite-from-prompt`](workflows/pixel-art/sprite-from-prompt.json) | Animates a sprite from a motion prompt into a looping sprite sheet. |
 | [`pixel-art/sprite-from-video`](workflows/pixel-art/sprite-from-video.json) | Animates a sprite by copying the motion of a video. |
+| [`pixel-art/sprite-from-video-scail2`](workflows/pixel-art/sprite-from-video-scail2.json) | The same with the SCAIL 2 model (experimental). |
 | [`pixel-art/sprite-inbetween`](workflows/pixel-art/sprite-inbetween.json) | Draws the frames between key frames of an animation. |
 | [`pixel-art/prompt-to-tile`](workflows/pixel-art/prompt-to-tile.json) | Makes a seamless terrain tile from a prompt. |
 | [`pixel-art/prompt-to-setpiece`](workflows/pixel-art/prompt-to-setpiece.json) | Makes a large scenery object (a tree, a cliff, a tower) from a prompt. |

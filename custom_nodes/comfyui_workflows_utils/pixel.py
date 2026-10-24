@@ -916,6 +916,8 @@ class PrepareSpriteForVideo:
             "target_size": ("INT", {"default": 640, "min": 128, "max": 1536, "step": 16, "tooltip": "Approximate longest side sent to the video model."}),
             "padding": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 2.0, "step": 0.05, "tooltip": "Free space around the sprite for motion, as a fraction of its size (each side)."}),
             "bg_color": ("STRING", {"default": "auto", "tooltip": "auto = a flat colour far from the sprite palette, or a hex colour."}),
+        }, "optional": {
+            "multiple": ("INT", {"default": 16, "min": 8, "max": 64, "step": 8, "tooltip": "Width and height are made divisible by this (16 for Wan; 32 for SCAIL 2). The canvas grows by whole art pixels."}),
         }}
 
     RETURN_TYPES = ("IMAGE", "PIXEL_SPEC", "INT", "INT", "STRING")
@@ -924,7 +926,7 @@ class PrepareSpriteForVideo:
     CATEGORY = "comfyui_workflows/pixel"
     DESCRIPTION = "Upscale a pixel sprite by an integer factor onto a flat background for a video model, and remember the grid."
 
-    def run(self, sprite, target_size, padding, bg_color):
+    def run(self, sprite, target_size, padding, bg_color, multiple=16):
         native, detected = recover_native(to_rgba_np(sprite)[0])
         src_h, src_w = native.shape[:2]
         x0, y0, x1, y1 = subject_bbox(native[..., 3] > 0)
@@ -934,9 +936,9 @@ class PrepareSpriteForVideo:
         pad_x, pad_y = int(math.ceil(w * padding)), int(math.ceil(h * padding))
         cw, ch = w + 2 * pad_x, h + 2 * pad_y
         f = max(1, round(target_size / max(cw, ch)))
-        while (cw * f) % 16:
+        while (cw * f) % multiple:
             cw += 1
-        while (ch * f) % 16:
+        while (ch * f) % multiple:
             ch += 1
         bg = parse_palette(bg_color)
         bg = bg[0] if bg is not None else pick_background(palette)
@@ -955,6 +957,26 @@ class PrepareSpriteForVideo:
                 f"{cw * f}x{ch * f}px, background #{int(bg[0]):02x}{int(bg[1]):02x}{int(bg[2]):02x}")
         img = torch.from_numpy(big[None, ..., :3].astype(np.float32) / 255.0)
         return (img, spec, cw * f, ch * f, info)
+
+
+class SpriteVideoMask:
+    """The sprite's own silhouette on the prepared canvas, for video models that want a subject mask of the reference
+    (SCAIL 2): every pixel that is not the flat background PrepareSpriteForVideo painted."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"image": ("IMAGE",), "pixel_spec": ("PIXEL_SPEC",)}}
+
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("mask",)
+    FUNCTION = "run"
+    CATEGORY = "comfyui_workflows/pixel"
+    DESCRIPTION = "Subject mask of a sprite prepared by Prepare Pixel Sprite for Video (1 = sprite, 0 = background)."
+
+    def run(self, image, pixel_spec):
+        rgb = (image[..., :3] * 255).round().to(torch.uint8)
+        bg = torch.tensor(pixel_spec["bg"], dtype=torch.uint8, device=rgb.device)
+        return ((rgb != bg).any(-1).float(),)
 
 
 def frame_palette(spec, colors=0, palette_text="sprite"):
