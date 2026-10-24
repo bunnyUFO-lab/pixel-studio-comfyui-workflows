@@ -14,15 +14,18 @@ idle, so you pay only while it runs.
    modal setup
    ```
 
-3. Download the models (`--workflows pixel` by default; `all` or a comma-separated list also work):
+3. Download the models and deploy with the CLI (settings in `cloud/modal.env`, see below); it prints the
+   `COMFY_SOURCES` entry for Pixel Studio:
 
    ```bash
-   modal run cloud/modal_comfy.py::download
+   pixel-studio-comfy cloud modal deploy --download      # --gpu, --max-containers, --idle, --app, --dry-run ...
    ```
 
-4. Deploy; it prints the server's URL:
+   The CLI finds the Modal client on PATH or through the `PSC_MODAL` environment variable. The raw commands do the
+   same, and print the server URLs:
 
    ```bash
+   modal run cloud/modal_comfy.py::download              # --workflows pixel (default), all, or a comma-separated list
    modal deploy cloud/modal_comfy.py
    ```
 
@@ -61,8 +64,8 @@ modal deploy cloud/modal_comfy.py              # prints the comfyui and jobs URL
 python cloud/job_smoke.py --url <jobs url> --n 1   # through HTTP; needs MODAL_KEY / MODAL_SECRET in the environment
 ```
 
-Add the jobs endpoint to Sprite Studio as a `COMFY_SOURCES` entry (`pixel-studio-comfy cloud modal snippet` prints
-it once that command is available); the headers are your proxy auth token.
+Add the jobs endpoint to Sprite Studio as a `COMFY_SOURCES` entry: `pixel-studio-comfy cloud modal snippet` prints it
+(`deploy` prints it too). Its headers are the `$MODAL_KEY` / `$MODAL_SECRET` references to your proxy auth token.
 
 Cost: a job is billed from the moment its container starts. The first job of a container also pays the ComfyUI start
 (`timing.boot`), and a container stays up `MODAL_IDLE_SECONDS` after its last job, which no job's `cost` includes.
