@@ -173,14 +173,15 @@ def comfyui():
 class ComfyJob:
     """One ComfyUI per container, one job at a time: no @modal.concurrent on purpose. job_runner finds a job's files
     by comparing output/ and temp/ before and after, which is only right when nothing else runs on the same ComfyUI.
-    A warm container takes the next job (models stay loaded); a job's inputs and outputs are deleted after it."""
+    A warm container takes the next job with its models loaded (ComfyUI's cache stays on; job_runner marks the
+    output nodes per job so they always re-run); a job's inputs and outputs are deleted after it."""
 
     @modal.enter()
     def start(self):
         import job_runner
         t0 = time.time()
         _link_models()
-        self.proc = job_runner.ComfyProcess(COMFY, 8188).start()       # default args: --cache-none (see job_runner)
+        self.proc = job_runner.ComfyProcess(COMFY, 8188).start()       # default args; output nodes get a per-job marker (see job_runner)
         self.proc.wait_ready(600)
         self.boot = time.time() - t0
         self.boot_pending = True            # the first job of this container pays for the start
