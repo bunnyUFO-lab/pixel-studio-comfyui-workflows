@@ -132,5 +132,51 @@ try:
 except SystemExit as e:
     check(e.code == 2, "registry: group without a subcommand is an error")
 
+# ---- 1b: presets, .env and .secrets.env text, update refusal
+from psc import presets  # noqa: E402
+
+listed = presets.list_presets(ROOT)
+byname = {p.name: p for p in listed}
+check([p.name for p in listed][:5] == ["pixel", "svg", "edit", "video", "all"], "list_presets: pixel, svg, edit, video, all in order")
+check(all(p.description for p in listed), "list_presets: every description is non-empty")
+check(byname["pixel"].description == "pixel-art workflows", "list_presets: description without the Use-with hint")
+check(byname["all"].models == ["all"] and byname["all"].count == len(presets.workflow_names(ROOT)) > 5, "list_presets: all = every workflow")
+check(byname["video"].count == 2 and byname["edit"].models == ["image-edit/qwen-edit"], "list_presets: counts and models")
+
+with open(os.path.join(ROOT, "env", "pixel.env"), encoding="utf-8") as f:
+    pixel_text = f.read()
+pm = presets.preset_models(pixel_text)
+check(pm[0] == "pixel-art/image-to-pixel" and "pose/extract-pose" in pm and all("/" in m for m in pm), "preset_models: env/pixel.env")
+check(presets.preset_models("# MODELS=a\nMODELS=\n") == [] and presets.preset_models("MODELS= a , b \r\n") == ["a", "b"], "preset_models: empty and padded")
+
+rendered = presets.render_env(pixel_text, {"MODELS": "x/y", "PORT": "8189", "BIND_ADDRESS": "127.0.0.1"})
+parsed = core.parse_env(rendered)
+check(parsed["MODELS"] == "x/y" and parsed["PORT"] == "8189" and parsed["BIND_ADDRESS"] == "127.0.0.1", "render_env: overrides applied")
+check([ln for ln in rendered.splitlines() if ln.startswith("MODELS=")] == ["MODELS=x/y"], "render_env: the preset MODELS line is replaced, so MODELS appears once")
+check(rendered.startswith("# Preset: pixel-art") and rendered.endswith("\n") and "\r" not in rendered, "render_env: preset text kept, LF only")
+check(core.parse_env(presets.render_env(pixel_text, {}))["MODELS"] == pm[0] + "," + ",".join(pm[1:]) and "Set by" not in presets.render_env(pixel_text, {}),
+      "render_env: no overrides = the preset unchanged")
+
+SECRETS = "# header\r\nCIVITAI_TOKEN=\r\n# HF_TOKEN=commented\r\nHF_TOKEN=\r\nOTHER=1\r\n"
+new, filled = presets.fill_secrets(SECRETS, {"CIVITAI_TOKEN": "abc", "HF_TOKEN": "xyz", "OTHER": "2"})
+check(filled == ["CIVITAI_TOKEN", "HF_TOKEN"], "fill_secrets: reports the filled keys")
+check(new == "# header\r\nCIVITAI_TOKEN=abc\r\n# HF_TOKEN=commented\r\nHF_TOKEN=xyz\r\nOTHER=1\r\n", "fill_secrets: fills empty, keeps comments, CRLF and other keys")
+again, filled2 = presets.fill_secrets(new, {"CIVITAI_TOKEN": "other", "HF_TOKEN": "other"})
+check(again == new and filled2 == [], "fill_secrets: a non-empty value is never changed")
+same, none = presets.fill_secrets(SECRETS, {"CIVITAI_TOKEN": ""})
+check(same == SECRETS and none == [], "fill_secrets: empty value fills nothing")
+check(presets.fill_secrets("HF_TOKEN=\"\"\n", {"HF_TOKEN": "t"})[0] == "HF_TOKEN=t\n", "fill_secrets: empty quotes count as empty")
+
+check(presets.update_refusal(" M README.md\n", "origin/main") and "uncommitted" in presets.update_refusal(" M README.md\n", "origin/main"), "update_refusal: dirty")
+check("no upstream" in presets.update_refusal("", ""), "update_refusal: no upstream")
+check(presets.update_refusal("", "origin/main") is None, "update_refusal: clean with upstream -> None")
+
+p3 = cli.build_parser()
+check({"setup", "models", "update"} <= set(p3._subparsers._group_actions[0].choices), "parser: setup, models and update are registered")
+check(p3.parse_args(["models", "get", "pixel"]).func is p3.parse_args(["models", "pull", "pixel"]).func, "parser: models get is an alias of models pull")
+sa = p3.parse_args(["setup", "--yes", "--no-up", "--port", "8189", "--models", "a/b", "--project-name", "psc-smoke", "--lan"])
+check((sa.yes, sa.no_up, sa.port, sa.models, sa.project_name, sa.lan) == (True, True, 8189, "a/b", "psc-smoke", True), "parser: setup options")
+check(p3.parse_args(["update", "--no-up"]).no_up is True, "parser: update --no-up")
+
 print("\n%d/%d passed" % (sum(RESULTS), len(RESULTS)))
 sys.exit(0 if all(RESULTS) else 1)

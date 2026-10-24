@@ -43,6 +43,11 @@ class Stack:
         except OSError:
             return None
 
+    def write_text(self, name, text):
+        """Write a file in the stack folder with LF endings (Python 3.9 has no newline= on Path.write_text)."""
+        with open(str(self.path(name)), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+
     def read_env(self):
         """The stack .env, with the shell values for the keys compose also takes from the shell."""
         text = self.read_text(".env")
