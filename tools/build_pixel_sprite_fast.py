@@ -363,7 +363,10 @@ def build_vace_pose():
     link(12, 0, 22, 5)                               # reference image = the prepared sprite
     link(13, 1, 22, 8)
     vace_tail(g, c, 1920, "pixel/sprite_from_video_vace", loop=False, tag="anim", height_match=True)
-    note = f"""Pixel sprite + driving video -> sprite sheet (Wan 2.1 VACE 1.3B pose control, fast)
+    note = f"""Pixel sprite + driving video -> sprite sheet (Wan 2.1 VACE 1.3B pose control, fast) - EXPERIMENTAL
+
+Tested 24 Oct 2026: with full-size human skeletons VACE draws a human in the sprite's colours. Scale the
+skeletons to the sprite before relying on it.
 
 1. Pixel sprite (blue): native pixel art; output keeps its pixel size + palette. It is VACE's reference image.
 2. Driving video (blue): one person doing the motion, whole body visible, static camera. Read at {c['fps']} fps, up to

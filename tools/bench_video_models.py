@@ -117,6 +117,8 @@ def build_prompt(arm, sprite_file, motion, driver_file, prefix, seed, object_inf
                 n["inputs"][k] = seed
         if n["class_type"] == "VHS_VideoCombine":
             n["inputs"]["filename_prefix"] = prefix + "_raw"
+        if n["class_type"] == "PixelArtCheck":
+            n["inputs"]["consistent_height"] = False               # the same check on every arm (attacks change height)
         if n["class_type"] == "SpriteAnimationPreview":
             n["_drop"] = True
     api = {k: v for k, v in api.items() if not v.pop("_drop", False)}
