@@ -18,7 +18,7 @@ idle, so you pay only while it runs.
    `COMFY_SOURCES` entry for Pixel Studio:
 
    ```bash
-   pixel-studio-comfy cloud modal deploy --download      # --gpu, --max-containers, --idle, --app, --dry-run ...
+   pixel-studio-comfy cloud modal deploy --download      # --gpu, --max-containers, --idle, --app, --live, --dry-run ...
    ```
 
    The CLI finds the Modal client on PATH or through the `PSC_MODAL` environment variable. The raw commands do the
@@ -51,7 +51,7 @@ Settings live in `cloud/modal.env` (git-ignored; copy `cloud/modal.env.example`)
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `MODAL_APP` | `sprite-studio-comfy` | app name; use another name to try changes without touching the live app |
+| `MODAL_APP` | `sprite-studio-comfy` | app name; use another name to try changes without touching the live app. `cloud modal deploy` refuses this name unless you pass `--live` (a deploy changes the live endpoint's GPU and cost) |
 | `MODAL_GPU` | `RTX-PRO-6000,L40S` | comma list, tried in order |
 | `MODAL_MAX_CONTAINERS` | `3` | job containers at once |
 | `MODAL_IDLE_SECONDS` | `300` | how long a warm container waits for the next job |

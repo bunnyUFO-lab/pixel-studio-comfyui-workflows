@@ -134,7 +134,7 @@ check(cm.gpu_rate("l40s", rates) == 1.95 and cm.gpu_rate("", rates) is None and 
 with tempfile.TemporaryDirectory() as tmp:
     empty_path = os.path.join(tmp, "nothing-here")
     os.makedirs(empty_path)
-    for argv in (["--dir", tmp, "cloud", "modal", "snippet"], ["--dir", tmp, "cloud", "modal", "deploy"]):
+    for argv in (["--dir", tmp, "cloud", "modal", "snippet"], ["--dir", tmp, "cloud", "modal", "deploy", "--app", "try-it"]):
         code, out, err = main_capture(argv, {"PSC_MODAL": None, "PATH": empty_path})
         check(code == 1 and "Modal client not found" in err and "PSC_MODAL" in err and "Traceback" not in err and out == "",
               "no Modal client: %s -> exit 1, plain message, nothing on stdout" % " ".join(argv[2:]))
@@ -156,6 +156,29 @@ with tempfile.TemporaryDirectory() as tmp:
     check("::download --workflows starter" in err and "refresh_info" not in err, "dry run: --download uses the preset, --no-warm drops the info run")
     code, out, err = main_capture(["--dir", tmp, "cloud", "modal", "deploy", "--dry-run", "--max-containers", "0"], {"PATH": ""})
     check(code == 1 and "MODAL_MAX_CONTAINERS" in err, "dry run: --max-containers 0 -> exit 1")
+
+# ---- B1: deploying the live app needs --live
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "cloud"))
+    with open(os.path.join(tmp, "cloud", "modal.env.example"), "w") as f:
+        f.write("MODAL_GPU=RTX-PRO-6000,L40S\n")
+    env = {"PSC_MODAL": None, "MODAL_APP": None, "PATH": ""}
+    base = ["--dir", tmp, "cloud", "modal", "deploy"]
+    code, out, err = main_capture(base, env)
+    check(code == 1 and "sprite-studio-comfy" in err and "refusing" in err and "GPU" in err and "RTX-PRO-6000" in err
+          and "cost" in err and "--live" in err and "Modal client not found" not in err and out == "" and "Traceback" not in err,
+          "live guard: the default app (the live one) is refused, naming the app, the GPU and the cost change")
+    check(not os.path.exists(os.path.join(tmp, "cloud", "modal.env")), "live guard: nothing was written")
+    code, out, err = main_capture(base, dict(env, MODAL_APP="sprite-studio-comfy"))
+    check(code == 1 and "refusing" in err, "live guard: a stale MODAL_APP=sprite-studio-comfy in the shell is not consent")
+    code, out, err = main_capture(base + ["--live"], env)
+    check("refusing" not in err and "Modal client not found" in err, "live guard: --live passes the guard")
+    code, out, err = main_capture(base + ["--app", "sprite-studio-comfy"], env)
+    check("refusing" not in err and "Modal client not found" in err, "live guard: --app sprite-studio-comfy spelled out passes the guard")
+    code, out, err = main_capture(base + ["--app", "sprite-studio-comfy-m3"], env)
+    check("refusing" not in err and "Modal client not found" in err, "live guard: another app name needs nothing")
+    code, out, err = main_capture(base + ["--dry-run"], env)
+    check(code == 0 and "NOTE" in err and "--live" in err and out == "", "live guard: --dry-run on the live app prints a note and writes nothing")
 
 # ---- the config keys agree with cloud/modal_comfy.py (3a)
 with open(os.path.join(ROOT, "cloud", "modal_comfy.py"), encoding="utf-8") as f:
