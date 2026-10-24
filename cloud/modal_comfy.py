@@ -180,7 +180,7 @@ class ComfyJob:
         import job_runner
         t0 = time.time()
         _link_models()
-        self.proc = job_runner.ComfyProcess(COMFY, 8188).start()
+        self.proc = job_runner.ComfyProcess(COMFY, 8188).start()       # default args: --cache-none (see job_runner)
         self.proc.wait_ready(600)
         self.boot = time.time() - t0
         self.boot_pending = True            # the first job of this container pays for the start
@@ -211,19 +211,22 @@ class ComfyJob:
         self.boot_pending = False
         state.put(key, {"node": None, "value": 0, "max": 0, "done": [], "total": len(doc.get("workflow") or {})})
         try:
-            result = job_runner.run_job(doc, self.proc, on_progress=on_progress, boot=boot, rate=rates,
-                                        worker=os.environ.get("MODAL_TASK_ID", ""))
+            result = job_runner.run_job_guarded(doc, self.proc, recycle, on_progress=on_progress, boot=boot, rate=rates,
+                                                worker=os.environ.get("MODAL_TASK_ID", ""),
+                                                max_timeout=CFG["job_timeout"])
             return job_runner.encode_result(result)
-        except ValueError:
-            raise
-        except Exception as e:
-            # Re-raised as one type: a TimeoutError would read as "still running" to the status poll.
-            raise RuntimeError(f"{type(e).__name__}: {e}") from None
         finally:
             try:
                 state.pop(key)
             except KeyError:
                 pass
+
+
+def recycle(reason):
+    """This container's ComfyUI is dead or in an unknown state: take no more jobs. The job in hand still finishes
+    (fails); the next one starts a fresh container."""
+    print(f"recycling this container: {reason}", flush=True)
+    modal.experimental.stop_fetching_inputs()
 
 
 @app.function(volumes={MODELS: models}, timeout=600)
@@ -287,6 +290,14 @@ def jobs():
         except Exception:
             return None
 
+    async def forget(job_id, *prefixes):
+        """Drop the job's records from the Dict (progress `job:`, cancel flag `cancelled:`)."""
+        for prefix in prefixes:
+            try:
+                await state.pop.aio(f"{prefix}:{job_id}")
+            except KeyError:
+                pass
+
     @api.get("/v1/jobs/{job_id}")
     async def status(job_id: str):
         call = await call_of(job_id)
@@ -298,22 +309,23 @@ def jobs():
             result = await call.get.aio(timeout=0)
         except (TimeoutError, modal.exception.TimeoutError):
             if cancelled:
+                await forget(job_id, "job")
                 return {"id": job_id, "status": "cancelled", "progress": None}
             return {"id": job_id, "status": "running" if progress else "queued", "progress": progress}
         except modal.exception.OutputExpiredError:
+            await forget(job_id, "job", "cancelled")
             return reply(404, {"error": "result expired"})
         except modal.exception.InputCancellation:
+            await forget(job_id, "job", "cancelled")                # Modal has reported the cancel: the flag is spent
             return {"id": job_id, "status": "cancelled", "progress": None}
         except Exception as e:                  # modal.exception.NotFoundError / InvalidError for a made-up id
             if isinstance(e, (modal.exception.NotFoundError, modal.exception.InvalidError)):
                 return reply(404, {"error": "unknown job id"})
+            await forget(job_id, "job", "cancelled")
             if cancelled:
                 return {"id": job_id, "status": "cancelled", "progress": None}
             return {"id": job_id, "status": "failed", "progress": None, "error": str(e)[:2000]}
-        try:
-            await state.pop.aio(f"job:{job_id}")
-        except KeyError:
-            pass
+        await forget(job_id, "job", "cancelled")
         return {"id": job_id, "status": "done", "progress": None, "result": result}
 
     @api.delete("/v1/jobs/{job_id}")
@@ -321,10 +333,20 @@ def jobs():
         call = await call_of(job_id)
         if call is None:
             return reply(404, {"error": "unknown job id"})
+        try:                    # from_id is lazy: ask once, so a made-up id is a 404 and a finished job is not "cancelled"
+            await call.get.aio(timeout=0)
+            return reply(409, {"error": "job already finished"})
+        except (TimeoutError, modal.exception.TimeoutError):
+            pass                # queued or running: cancel it
+        except (modal.exception.NotFoundError, modal.exception.InvalidError, modal.exception.OutputExpiredError):
+            return reply(404, {"error": "unknown job id"})
+        except Exception:
+            return reply(409, {"error": "job already finished"})
         # terminate_containers: otherwise the ComfyUI subprocess would keep running the prompt, and the next job
         # on that container would wait behind it. Costs one cold start; cancels are rare.
-        await state.put.aio(f"cancelled:{job_id}", True)
         await call.cancel.aio(terminate_containers=True)
+        await state.put.aio(f"cancelled:{job_id}", True)            # only after the cancel went through
+        await forget(job_id, "job")
         return {"id": job_id, "status": "cancelled"}
 
     return api

@@ -33,6 +33,11 @@ MAX_INPUT_BYTES = 64 * 1024 * 1024
 MAX_OUTPUT_BYTES = 256 * 1024 * 1024
 MAX_TIMEOUT = 3600
 HISTORY_KEYS = ("images", "gifs", "videos", "audio")
+# ComfyUI keeps an execution cache between prompts: an identical graph re-runs nothing, so its save nodes write no
+# files while the history still lists them. A job container must not do that. --cache-none runs every node of
+# every prompt, whatever the node type (a per-job filename_prefix would miss nodes that have none). Models are
+# re-read from the Volume on each job; ComfyUI v0.38.2 has the flag.
+JOB_ARGS = ("--cache-none",)
 
 
 class InputTooLarge(ValueError):
@@ -166,11 +171,15 @@ class ComfyProcess:
         self.temp_dir = os.path.join(comfy_dir, "temp")
         self.proc = None
 
-    def start(self, extra_args=()):
+    def start(self, extra_args=JOB_ARGS):
         cmd = [sys.executable, os.path.join(self.comfy_dir, "main.py"), "--listen", "127.0.0.1", "--port",
                str(self.port), "--disable-auto-launch", *extra_args]
         self.proc = subprocess.Popen(cmd, cwd=self.comfy_dir)
         return self
+
+    def alive(self):
+        """False once the ComfyUI process has exited (crash, OOM kill); also False before start()."""
+        return self.proc is not None and self.proc.poll() is None
 
     def wait_ready(self, timeout=600):
         end = time.time() + timeout
@@ -295,14 +304,18 @@ def _within(root, *parts):
     return p if p.startswith(base + os.sep) else None
 
 
-def run_job(doc, proc, on_progress=None, boot=0.0, rate=None, worker=""):
+def run_job(doc, proc, on_progress=None, boot=0.0, rate=None, worker="", max_timeout=None):
     """Run one job document on `proc` and return the result document (file data as bytes: encode_result for JSON).
 
     boot:  seconds this container spent starting ComfyUI, to charge to this job (0 for later jobs of a container).
     rate:  usd per hour, or the rates document of cloud/gpu_rates.json (matched on the GPU name); None = no cost.
+    max_timeout: the deployment's ceiling in seconds; the job's own timeout is cut to it, so the runner times the
+           job out cleanly before the platform kills the whole call.
     Infrastructure problems (ComfyUI not answering, timeout) raise; a rejected graph or a failed node is a result
     with status "error"."""
     timeout = validate_job(doc)
+    if max_timeout:
+        timeout = min(timeout, max_timeout)
     inputs = decode_job(doc)
     graph = doc["workflow"]
     titles = {k: (v.get("_meta") or {}).get("title", k) for k, v in graph.items()}
@@ -345,6 +358,11 @@ def run_job(doc, proc, on_progress=None, boot=0.0, rate=None, worker=""):
         produced = new_files(before, snapshot([proc.output_dir, proc.temp_dir]))
         result["files"] = _gather_files(proc, listed, produced, result)
     finally:
+        # Also on a timeout or a crash: whatever the job wrote must not show up in the next job's result.
+        try:
+            produced = new_files(before, snapshot([proc.output_dir, proc.temp_dir]))
+        except OSError:
+            pass
         _cleanup(proc, written, produced)
         try:
             _request(proc.url + "/history", {"clear": True}, timeout=10)
@@ -359,6 +377,30 @@ def run_job(doc, proc, on_progress=None, boot=0.0, rate=None, worker=""):
     result["cost"] = {"gpu": gpu, "rate_per_hour": per_hour,
                       "usd": None if per_hour is None else round((boot + run) * per_hour / 3600, 6)}
     result["worker"] = worker
+    return result
+
+
+def run_job_guarded(doc, proc, recycle, **kw):
+    """run_job for a container that serves several jobs one after another (Modal's ComfyJob, a RunPod worker).
+
+    `recycle(reason)` must stop the container from taking more jobs (Modal: modal.experimental.stop_fetching_inputs).
+    It is called when ComfyUI is not running at the start, when the job raises an infrastructure error (ComfyUI
+    died, did not answer, timed out: its state is then unknown) and when ComfyUI is gone after the job. The next job
+    then gets a fresh container, at the price of one cold start. A bad document (ValueError) is the caller's fault
+    and recycles nothing. Infrastructure errors are re-raised as RuntimeError (a TimeoutError would read as "still
+    running" to a status poll)."""
+    validate_job(doc)
+    decode_job(doc)
+    if not proc.alive():
+        recycle("ComfyUI is not running")
+        raise RuntimeError("ComfyUI is not running; this container takes no more jobs")
+    try:
+        result = run_job(doc, proc, **kw)
+    except Exception as e:
+        recycle(f"{type(e).__name__}: {e}")
+        raise RuntimeError(f"{type(e).__name__}: {e}") from None
+    if not proc.alive():
+        recycle("ComfyUI exited during the job")
     return result
 
 
@@ -388,8 +430,22 @@ def _wait_history(proc, pid, deadline):
                 _request(proc.url + "/interrupt", {}, timeout=10)
             except (OSError, ValueError):
                 pass
+            _wait_idle(proc)
             raise TimeoutError("job did not finish before its timeout")
         time.sleep(0.5)
+
+
+def _wait_idle(proc, seconds=20):
+    """After /interrupt: wait until ComfyUI is no longer running a prompt, so a late save does not hit the next job."""
+    end = time.time() + seconds
+    while time.time() < end:
+        try:
+            code, q = _request(proc.url + "/queue", timeout=5)
+        except (OSError, ValueError):
+            return
+        if code != 200 or not isinstance(q, dict) or not q.get("queue_running"):
+            return
+        time.sleep(0.25)
 
 
 def _gather_files(proc, listed, produced, result):
@@ -399,9 +455,14 @@ def _gather_files(proc, listed, produced, result):
     for node, filename, subfolder, ftype in listed:
         root = roots.get(ftype)
         path = _within(root, subfolder, filename) if root else None
-        if path and os.path.isfile(path) and path not in seen:
-            seen.add(path)
-            entries.append((node, filename, subfolder, ftype, path))
+        if path and os.path.isfile(path):
+            if path not in seen:
+                seen.add(path)
+                entries.append((node, filename, subfolder, ftype, path))
+        else:       # listed but not written by this job: ComfyUI served the node from its cache. Never pass silently.
+            result["status"] = "error"
+            result["errors"].append(f"{node}: ComfyUI lists {filename} but did not write it (output served from "
+                                    "its execution cache); run the job again")
     for p in produced:
         rp = os.path.realpath(p)
         if rp in seen:
