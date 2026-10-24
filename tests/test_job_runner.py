@@ -37,7 +37,10 @@ class Fake(http.server.BaseHTTPRequestHandler):
     """POST /prompt "executes" at once: writes files into output/ (and temp/), then GET /history/<id> answers."""
     server_version = "fake"
     mode = "ok"          # ok | node_errors | exec_error | big | hang (files written, history never appears)
-    simulate_cache = False      # True: an identical prompt writes no files, as ComfyUI does without --cache-none
+    simulate_cache = False      # True: an identical prompt writes no files, as ComfyUI's execution cache does
+    force_cached = False        # True: every prompt is served from the cache (no files), whatever the graph
+    submitted = []              # every graph POSTed to /prompt
+    object_info = {"LoadImage": {}, "SaveImage": {"output_node": True}, "PixelArtCheck": {"output_node": True}}
     seen = set()
     interrupts = 0
     died = False
@@ -61,6 +64,8 @@ class Fake(http.server.BaseHTTPRequestHandler):
         if self.path == "/system_stats":
             return self.send(200, {"system": {"comfyui_version": "0.38.2"},
                                    "devices": [{"name": "cuda:0 NVIDIA L40S : cudaMallocAsync"}]})
+        if self.path == "/object_info":
+            return self.send(200, Fake.object_info) if Fake.object_info is not None else self.send(500, {})
         if self.path == "/queue":
             return self.send(200, {"queue_running": [], "queue_pending": []})
         if self.path.startswith("/history/"):
@@ -80,6 +85,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
         if self.path != "/prompt":
             return self.send(404, {})
         graph = body["prompt"]
+        Fake.submitted.append(graph)
         Fake.seen_inputs = {n: open(os.path.join(Fake.indir, n), "rb").read() for n in os.listdir(Fake.indir)}
         if Fake.mode == "node_errors":
             return self.send(400, {"error": {"type": "prompt_outputs_failed_validation", "message": "Prompt outputs failed validation"},
@@ -93,7 +99,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
             Fake.history["p1"] = {"status": status, "outputs": {}}
             return self.send(200, {"prompt_id": "p1", "number": 1, "node_errors": {}})
         key = json.dumps([graph, sorted((n, d.decode("latin1")) for n, d in Fake.seen_inputs.items())], sort_keys=True)
-        cached = Fake.simulate_cache and key in Fake.seen
+        cached = Fake.force_cached or (Fake.simulate_cache and key in Fake.seen)
         Fake.seen.add(key)
         if Fake.mode == "hang":
             with open(os.path.join(Fake.outdir, "late.png"), "wb") as fh:
@@ -246,19 +252,56 @@ with tempfile.TemporaryDirectory() as root:
     except ValueError:
         check(True, "run_job validates the document")
 
-    # A1: an identical job on a warm container. Without --cache-none ComfyUI re-runs nothing: history lists files
-    # that were not written. That must never come back as a quiet success without files.
-    Fake.mode, Fake.simulate_cache, Fake.seen = "ok", True, set()
+    # A1: an identical job on a warm container. ComfyUI's cache would re-run nothing: history lists files that were
+    # not written. The per-job marker on the output nodes makes them re-run; if a listed file is still missing, error.
+    Fake.mode, Fake.simulate_cache, Fake.seen, Fake.submitted = "ok", True, set(), []
     first = jr.run_job(job(), proc)
     second = jr.run_job(job(), proc)
     check(first["status"] == "success" and len(first["files"]) == 4, "A1: first job on the container returns its files")
-    check(second["status"] == "error" and any("did not write" in e and "pixel_00001_.webp" in e for e in second["errors"]),
-          f"A1: identical second job whose outputs came from ComfyUI's cache -> status error naming the file ({second['errors']})")
-    check(os.listdir(proc.input_dir) == [] and os.listdir(proc.temp_dir) == [], "A1: the cached job still cleans up")
+    check(second["status"] == "success" and len(second["files"]) == 4,
+          f"A1: identical second job also returns its files, the cache cannot skip its save nodes ({second['errors']})")
+    g1, g2 = Fake.submitted
+    check(jr.MARKER_KEY not in g1["1"]["inputs"] and jr.MARKER_KEY not in g2["1"]["inputs"],
+          "A1: the loader node carries no marker")
+    check(all(jr.MARKER_KEY in g[n]["inputs"] for g in (g1, g2) for n in ("7", "8", "9")),
+          "A1: every output node (SaveImage x2, PixelArtCheck) carries the marker")
+    check(g1["7"]["inputs"][jr.MARKER_KEY] != g2["7"]["inputs"][jr.MARKER_KEY]
+          and len({g1[n]["inputs"][jr.MARKER_KEY] for n in ("7", "8", "9")}) == 1,
+          "A1: the marker differs between two identical jobs and is shared by one job's output nodes")
+    check(json.dumps(g1["1"], sort_keys=True) == json.dumps(GRAPH["1"], sort_keys=True)
+          and json.dumps(g2["1"], sort_keys=True) == json.dumps(GRAPH["1"], sort_keys=True),
+          "A1: the loader node is byte-identical to the job's own")
+    check(jr.MARKER_KEY not in GRAPH["7"]["inputs"], "A1: the caller's graph is not modified")
     Fake.simulate_cache = False
-    again = [jr.run_job(job(), proc) for _ in range(2)]
-    check(all(r["status"] == "success" and len(r["files"]) == 4 for r in again),
-          "A1: two identical jobs that both execute (what --cache-none gives) both return their files")
+    Fake.force_cached = True
+    third = jr.run_job(job(), proc)
+    Fake.force_cached = False
+    check(third["status"] == "error" and any("did not write" in e and "pixel_00001_.webp" in e for e in third["errors"]),
+          f"A1: safety net: a listed file that was not written -> status error naming the file ({third['errors']})")
+    check(os.listdir(proc.input_dir) == [] and os.listdir(proc.temp_dir) == [], "A1: the cached job still cleans up")
+    check("--cache-none" not in jr.JOB_ARGS and jr.JOB_ARGS == (), "A1: JOB_ARGS has no --cache-none")
+    check(jr.output_node_ids(GRAPH, frozenset({"SaveImage"})) == ["7", "8"],
+          "A1: output nodes are the classes with output_node true in object_info")
+    check(jr.output_node_ids(GRAPH) == ["7", "8", "9"],
+          "A1: without object_info, output nodes are the ones no other node links to (not the linked loader)")
+    chain = {"1": {"class_type": "A", "inputs": {}}, "2": {"class_type": "B", "inputs": {"x": ["1", 0], "n": 3}},
+             "3": {"class_type": "C", "inputs": {"y": ["2", 0], "bad": ["99", 0]}}}
+    check(jr.output_node_ids(chain) == ["3"], "A1: fallback: only the end of a chain; a dangling link is not a node")
+    keep = {"1": {"class_type": "SaveImage", "inputs": {jr.MARKER_KEY: "mine"}}}
+    check(jr.mark_outputs(keep, frozenset({"SaveImage"}))["1"]["inputs"][jr.MARKER_KEY] == "mine",
+          "A1: an input the node already has is never overwritten")
+    # object_info unreadable -> the fallback marks the unlinked nodes, and a later job tries object_info again
+    Fake.object_info, Fake.submitted = None, []
+    fresh = FakeProc(os.path.join(root, "fresh"), proc.url)
+    jr.run_job(job(), fresh)
+    check(all(jr.MARKER_KEY in Fake.submitted[0][n]["inputs"] for n in ("7", "8", "9"))
+          and jr.MARKER_KEY not in Fake.submitted[0]["1"]["inputs"] and not hasattr(fresh, "_psc_output_classes"),
+          "A1: object_info unreadable -> fallback marks the unlinked nodes and is not cached")
+    Fake.object_info = {"SaveImage": {"output_node": True}}
+    jr.run_job(job(), fresh)
+    jr.run_job(job(), fresh)
+    check(fresh._psc_output_classes == frozenset({"SaveImage"}), "A1: object_info is read once per process and kept")
+    Fake.object_info = {"LoadImage": {}, "SaveImage": {"output_node": True}, "PixelArtCheck": {"output_node": True}}
     popen_calls = []
     real_popen = jr.subprocess.Popen
     jr.subprocess.Popen = lambda cmd, **kw: popen_calls.append(cmd) or type("P", (), {"poll": lambda self: None})()
@@ -269,8 +312,8 @@ with tempfile.TemporaryDirectory() as root:
         jr.ComfyProcess(root, 8198).start(["--cpu"])
     finally:
         jr.subprocess.Popen = real_popen
-    check("--cache-none" in popen_calls[0] and "--cache-none" not in popen_calls[1],
-          "A1: ComfyProcess.start() adds --cache-none by default; explicit args replace it (refresh_info --cpu)")
+    check("--cache-none" not in popen_calls[0] and "--cpu" in popen_calls[1],
+          "A1: ComfyProcess.start() adds no cache flag; explicit args (refresh_info --cpu) still pass")
     check(cp.alive(), "A2: alive() is True while the process runs")
     cp.proc = type("P", (), {"poll": lambda self: 137})()
     check(not cp.alive(), "A2: alive() is False once ComfyUI exited")
