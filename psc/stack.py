@@ -43,9 +43,20 @@ class Stack:
         except OSError:
             return None
 
-    def write_text(self, name, text):
-        """Write a file in the stack folder with LF endings (Python 3.9 has no newline= on Path.write_text)."""
-        with open(str(self.path(name)), "w", encoding="utf-8", newline="\n") as f:
+    def write_text(self, name, text, private=False):
+        """Write a file in the stack folder with LF endings (Python 3.9 has no newline= on Path.write_text).
+        private=True creates it readable by the owner only (0600; no effect on Windows) and tightens an existing file."""
+        path = str(self.path(name))
+        if private:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            f = os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+        else:
+            f = open(path, "w", encoding="utf-8", newline="\n")
+        with f:
             f.write(text)
 
     def read_env(self):

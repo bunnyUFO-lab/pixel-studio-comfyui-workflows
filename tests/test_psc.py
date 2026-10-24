@@ -178,5 +178,49 @@ sa = p3.parse_args(["setup", "--yes", "--no-up", "--port", "8189", "--models", "
 check((sa.yes, sa.no_up, sa.port, sa.models, sa.project_name, sa.lan) == (True, True, 8189, "a/b", "psc-smoke", True), "parser: setup options")
 check(p3.parse_args(["update", "--no-up"]).no_up is True, "parser: update --no-up")
 
+# ---- 1b review: private writes, and setup never overwriting (temp folder, step_checks not called)
+import shutil  # noqa: E402
+import stat  # noqa: E402
+import tempfile  # noqa: E402
+from psc import setup as psc_setup  # noqa: E402
+from psc.stack import Stack  # noqa: E402
+
+tmp = tempfile.mkdtemp(prefix="psc-test-")
+saved_env = {k: os.environ.pop(k, None) for k in ("CIVITAI_TOKEN", "HF_TOKEN")}
+try:
+    st = Stack(tmp)
+    st.write_text("a.txt", "x\ny\n", private=True)
+    with open(os.path.join(tmp, "a.txt"), "rb") as f:
+        check(f.read() == b"x\ny\n", "write_text private: LF endings kept")
+    if os.name != "nt":
+        check(stat.S_IMODE(os.stat(os.path.join(tmp, "a.txt")).st_mode) == 0o600, "write_text private: mode 0600")
+        os.chmod(os.path.join(tmp, "a.txt"), 0o644)
+        st.write_text("a.txt", "z\n", private=True)
+        check(stat.S_IMODE(os.stat(os.path.join(tmp, "a.txt")).st_mode) == 0o600, "write_text private: an existing file is tightened")
+    shutil.copytree(os.path.join(ROOT, "env"), os.path.join(tmp, "env"))
+    shutil.copytree(os.path.join(ROOT, "workflows"), os.path.join(tmp, "workflows"))
+    shutil.copy(os.path.join(ROOT, ".secrets.env.example"), os.path.join(tmp, ".secrets.env.example"))
+    sargs = types.SimpleNamespace(port=None, lan=False, project_name=None, output_dir=None, models=None, preset="pixel",
+                                  civitai_token=None, hf_token=None)
+    psc_setup.say = lambda text="": None
+    psc_setup.step_env(sargs, st, False, None)
+    psc_setup.step_secrets(sargs, st, False)
+    first = (st.read_text(".env"), st.read_text(".secrets.env"))
+    check(first[0] and "BIND_ADDRESS=127.0.0.1" in first[0] and first[1] is not None, "setup: first run writes .env and .secrets.env")
+    sargs2 = types.SimpleNamespace(**dict(vars(sargs), port=9999, lan=True))
+    psc_setup.step_env(sargs2, st, False, None)
+    psc_setup.step_secrets(sargs2, st, False)
+    check((st.read_text(".env"), st.read_text(".secrets.env")) == first, "setup: a second run with other flags leaves both files byte-identical")
+    st.write_text(".secrets.env", "CIVITAI_TOKEN=mine\nHF_TOKEN=\n", private=True)
+    os.environ["HF_TOKEN"] = "fromenv"
+    psc_setup.step_secrets(sargs, st, False)
+    check(st.read_text(".secrets.env") == "CIVITAI_TOKEN=mine\nHF_TOKEN=fromenv\n", "setup: an empty token is filled from the environment, a set one survives")
+finally:
+    for k, v in saved_env.items():
+        os.environ.pop(k, None)
+        if v is not None:
+            os.environ[k] = v
+    shutil.rmtree(tmp, ignore_errors=True)
+
 print("\n%d/%d passed" % (sum(RESULTS), len(RESULTS)))
 sys.exit(0 if all(RESULTS) else 1)

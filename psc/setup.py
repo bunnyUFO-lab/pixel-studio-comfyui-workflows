@@ -125,7 +125,7 @@ def step_secrets(args, stack, interactive):
                 values[key] = token
     new_text, filled = fill_secrets(text, values)
     if existing is None or new_text != existing:
-        stack.write_text(".secrets.env", new_text)
+        stack.write_text(".secrets.env", new_text, private=True)
     keys = core.parse_env(new_text)
     shown = ", ".join("%s %s" % (k, "set" if keys.get(k) else "empty") for k in SECRET_KEYS if k in keys)
     say("%s %s (%s)" % (".secrets.env", "written" if existing is None else "kept", shown or "no keys"))
