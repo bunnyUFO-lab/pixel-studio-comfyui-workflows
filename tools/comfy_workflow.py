@@ -77,6 +77,31 @@ ANIMATE_MODEL = "wan_animate_2_int8_convrot.safetensors"
 ANIMATE_LORA = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
 CLIP_VISION_H = "clip_vision_h.safetensors"
 
+# Fast local video models for sprites (tools/build_pixel_sprite_fast.py). Base models Apache-2.0, Comfy-Org repacks.
+WAN21_HF = f"{HF}/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files"
+WAN22_HF = f"{HF}/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files"
+TI2V_5B = "wan2.2_ti2v_5B_fp16.safetensors"           # 10 GB, Wan 2.2 text/image-to-video 5B, 24 fps
+WAN22_VAE = "wan2.2_vae.safetensors"                   # the 5B's own VAE (16x spatial); 14B models use wan_2.1_vae
+VACE_1_3B = "wan2.1_vace_1.3B_fp16.safetensors"       # 4.3 GB, Wan 2.1 T2V 1.3B + VACE (first/last frame, pose)
+# Step-distill LoRAs. FastWan (FastVideo, Apache-2.0) is the one fit to ship; Turbo (quanhaol, code CC-BY-NC-SA-4.0)
+# and CausVid (tianweiy, CC-BY-NC-4.0) are non-commercial, kept for comparison only.
+FASTWAN_5B_LORA = "Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors"
+TURBO_5B_LORA = "Wan22_TI2V_5B_Turbo_lora_rank_64_fp16.safetensors"
+CAUSVID_1_3B_LORA = "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors"
+KIJAI_HF = f"{HF}/Kijai/WanVideo_comfy/resolve/main"
+# Frame interpolation (core FrameInterpolate node), RIFE 4.26 (MIT), 22 MB
+RIFE = "rife_v4.26.safetensors"
+RIFE_URL = f"{HF}/Comfy-Org/Frame-Interpolation/resolve/main/frame_interpolation/{RIFE}"
+URLS.update({
+    TI2V_5B: f"{WAN22_HF}/diffusion_models/{TI2V_5B}",
+    WAN22_VAE: f"{WAN22_HF}/vae/{WAN22_VAE}",
+    VACE_1_3B: f"{WAN21_HF}/diffusion_models/{VACE_1_3B}",
+    FASTWAN_5B_LORA: f"{KIJAI_HF}/FastWan/{FASTWAN_5B_LORA}",
+    TURBO_5B_LORA: f"{HF}/hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF/resolve/main/{TURBO_5B_LORA}",
+    CAUSVID_1_3B_LORA: f"{KIJAI_HF}/{CAUSVID_1_3B_LORA}",
+    RIFE: RIFE_URL,
+})
+
 # Node colors as (color, bgcolor)
 GREEN, RED, YELLOW, BLUE = ("#232", "#353"), ("#322", "#533"), ("#432", "#653"), ("#223", "#335")
 
