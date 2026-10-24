@@ -155,7 +155,7 @@ env `PSC_URL`; default `http://127.0.0.1:<PORT from .env, else 8188>`).
 | `models presets` | the preset table |
 | `token show` / `token rotate` | print or replace the gateway token (see [Gateway](#gateway)) |
 | `update [--no-up]` | `git pull --ff-only` (refuses on local changes or without an upstream), then `up` |
-| `cloud modal deploy [options]` / `cloud modal snippet` | deploy the [Modal job API](../cloud/README.md) and print the Pixel Studio `COMFY_SOURCES` entry; `--dry-run` shows what it would do |
+| `cloud modal deploy [options]` / `cloud modal snippet` | deploy the [Modal job API](../cloud/README.md) and print the Pixel Studio `COMFY_SOURCES` entry; `--dry-run` shows what it would do; the live app `sprite-studio-comfy` needs `--live` |
 | `cloud runpod build [--base IMAGE] [--tag IMAGE] [--push] [--dry-run]` | build the [RunPod worker image](../cloud/runpod/README.md) from the local ComfyUI image; `--push` publishes it to GHCR (needs `docker login ghcr.io`) |
 | `cloud runpod snippet --endpoint ID [--name N] [--label L] [--concurrency N] [--gpu G]` | print the Pixel Studio `COMFY_SOURCES` entry for a RunPod endpoint, then the endpoint settings |
 | `cloud runpod settings` | print the recommended RunPod endpoint settings only |

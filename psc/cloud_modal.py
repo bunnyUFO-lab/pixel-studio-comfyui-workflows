@@ -1,7 +1,7 @@
 """cloud modal: deploy the Modal job API (cloud/modal_comfy.py) and print the COMFY_SOURCES entry for Pixel Studio.
 
   pixel-studio-comfy cloud modal deploy [--gpu G] [--max-containers N] [--idle S] [--preset P] [--app NAME]
-                                        [--download] [--no-warm] [--dry-run]
+                                        [--live] [--download] [--no-warm] [--dry-run]
   pixel-studio-comfy cloud modal snippet [--name NAME] [--label LABEL]
 
 Settings live in cloud/modal.env (git-ignored; cloud/modal.env.example is the tracked template). Flags are merged
@@ -24,6 +24,7 @@ ENV_KEYS = {"app": "MODAL_APP", "gpu": "MODAL_GPU", "max_containers": "MODAL_MAX
 DEFAULTS = {"app": "sprite-studio-comfy", "gpu": "RTX-PRO-6000,L40S", "max_containers": 3, "idle": 300,
             "preset": "pixel", "job_timeout": 3600}
 INT_RANGES = {"max_containers": (1, 32), "idle": (1, 3600 * 24), "job_timeout": (1, 3600)}
+LIVE_APP = "sprite-studio-comfy"        # the app Pixel Studio's bunnylink uses: deploying it needs --live
 SCRIPT = "cloud/modal_comfy.py"
 ENV_FILE = "cloud/modal.env"
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -172,6 +173,18 @@ def print_snippet(cfg, url, rates, name, label):
         "token (dashboard > Settings > Proxy Auth Tokens).")
 
 
+def live_guard(cfg, args):
+    """Refuse to deploy the live app unless the caller said so: --live, or --app sprite-studio-comfy spelled out. The
+    default app name and a stale MODAL_APP in the shell or in cloud/modal.env are not consent."""
+    if cfg["app"] != LIVE_APP or args.live or args.app == LIVE_APP:
+        return
+    raise CliError(
+        "refusing to deploy the live app %r: it is the app Pixel Studio uses today, and this deploy replaces its code and "
+        "changes the GPU of its comfyui endpoint to %s (RTX-PRO-6000 is 3.03 USD/h, the earlier L40S default 1.95: "
+        "+55%% cost). Pass --live (or --app %s) if that is what you want; to try changes, pass --app <another name>."
+        % (LIVE_APP, cfg["gpu"].split(",")[0].strip(), LIVE_APP))
+
+
 def cmd_deploy(args, stack):
     updates = flag_updates(args)
     process_env = {k: v for k, v in os.environ.items() if k not in updates}     # a flag beats the shell value
@@ -191,8 +204,11 @@ def cmd_deploy(args, stack):
             say("  %s=%s" % (name, cfg[key]))
         for c in commands:
             say("  modal " + " ".join(c))
+        if cfg["app"] == LIVE_APP and not (args.live or args.app == LIVE_APP):
+            say("NOTE: this targets the live app %r; a real deploy needs --live." % LIVE_APP)
         say("Dry run: nothing was written or deployed.")
         return 0
+    live_guard(cfg, args)
     find_modal()
     if text is None or updates:
         stack.write_text(ENV_FILE, new_text)
@@ -244,6 +260,7 @@ def register(sub):
     p.add_argument("--idle", type=int, help="seconds a warm container waits for the next job (default 300)")
     p.add_argument("--preset", help="models `--download` fetches: pixel, starter, all or workflow names (default pixel)")
     p.add_argument("--app", help="Modal app name (default sprite-studio-comfy, the live app: pick another to try)")
+    p.add_argument("--live", action="store_true", help="allow deploying the live app sprite-studio-comfy (needed when it is the target)")
     p.add_argument("--download", action="store_true", help="download the models into the Modal Volume first (can take long)")
     p.add_argument("--no-warm", action="store_true", help="skip the CPU run that caches the node and model lists")
     p.add_argument("--dry-run", action="store_true", help="print the effective config and commands; write and deploy nothing")

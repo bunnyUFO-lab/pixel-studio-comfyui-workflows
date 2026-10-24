@@ -75,6 +75,8 @@ Give that key `s3:PutObject` and `s3:GetObject` on the prefix only, and add a 1-
   larger job fails with an error naming its size; use the Modal source for it.
 - **Cancels and timeouts**: RunPod can move on while the old job's prompt still runs. The next job on that worker first
   interrupts and clears ComfyUI, waits up to 120 s for the old job to end, then runs.
+- **Crashes**: if ComfyUI died, did not answer or timed out, the worker stops it and the next job starts a fresh one
+  (one more boot, charged to that job); the failed job reads FAILED with the reason.
 - **Boot** (starting ComfyUI) is charged to the worker's first job, as on Modal; `info` is a job, so it wakes a worker
   that the next real job reuses (idle timeout 300 s).
 - **Models**: with a volume attached the worker links `/opt/ComfyUI/models` to `/runpod-volume/models`; without one it

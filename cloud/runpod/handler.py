@@ -77,6 +77,9 @@ def _proc():
     """The worker's ComfyUI, started on first use. Tests set PROC / BOOT / BOOT_PENDING instead."""
     global PROC, BOOT, BOOT_PENDING
     with _PROC_LOCK:
+        if PROC is not None and not PROC.alive():          # crashed or OOM-killed between jobs: start a new one
+            PROC.stop()
+            PROC = None
         if PROC is None:
             _link_models()
             os.environ["MODELS_DIR"] = _models_dir()
@@ -90,6 +93,18 @@ def _proc():
             BOOT, BOOT_PENDING, PROC = round(time.time() - started, 3), True, proc
             print(f"ComfyUI ready after {BOOT}s", flush=True)
         return PROC
+
+
+def _recycle(reason):
+    """job_runner.run_job_guarded calls this when ComfyUI's state is unknown (it died, did not answer, timed out): stop
+    it, so the next job starts a fresh one. Unlike Modal there is no container to retire; the worker stays and pays
+    one ComfyUI start, charged to that job as boot."""
+    global PROC
+    print(f"recycling ComfyUI: {reason}", flush=True)
+    with _PROC_LOCK:
+        if PROC is not None:
+            PROC.stop()
+            PROC = None
 
 
 def _settle(proc):
@@ -168,9 +183,11 @@ def _run_job(doc, job_id, progress, uploader):
     _settle(proc)
     try:
         try:
-            result = job_runner.run_job(doc, proc, on_progress=progress, boot=BOOT if BOOT_PENDING else 0.0, rate=RATES,
-                                        worker=os.environ.get("RUNPOD_POD_ID", ""))
-        except ValueError:
+            # run_job_guarded re-raises infrastructure errors as RuntimeError("Type: message") after calling _recycle
+            result = job_runner.run_job_guarded(doc, proc, _recycle, on_progress=progress,
+                                                boot=BOOT if BOOT_PENDING else 0.0, rate=RATES,
+                                                worker=os.environ.get("RUNPOD_POD_ID", ""))
+        except (ValueError, RuntimeError):
             raise
         except Exception as e:
             raise RuntimeError(f"{type(e).__name__}: {e}") from e

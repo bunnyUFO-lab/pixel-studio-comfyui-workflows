@@ -16,6 +16,7 @@ import job_runner as jr  # noqa: E402
 import handler as h  # noqa: E402
 
 RESULTS = []
+REAL_PROCESS = jr.ComfyProcess
 
 
 def check(cond, msg):
@@ -103,8 +104,17 @@ class FakeProc:
         for d in (self.input_dir, self.output_dir, self.temp_dir):
             os.makedirs(d, exist_ok=True)
 
+    stopped = 0
+    up = True
+
     def gpu_name(self):
-        return jr.ComfyProcess.gpu_name(self)
+        return REAL_PROCESS.gpu_name(self)
+
+    def alive(self):
+        return self.up
+
+    def stop(self):
+        self.stopped += 1
 
     def info(self):
         return {"object_info": {"LoadImage": {}}, "models": {"checkpoints": ["a.safetensors"]}, "comfyui_version": "0.38.2"}
@@ -195,8 +205,31 @@ with tempfile.TemporaryDirectory() as root:
     jr.run_job = boom
     try:
         check(raises(lambda: h.handler(request()), RuntimeError, "Boom: no gpu"), "handler: infrastructure errors raise RuntimeError(Type: message)")
+        check(h.PROC is None and proc.stopped == 1, "handler: an infrastructure error recycles ComfyUI (stopped, next job starts a new one)")
     finally:
         jr.run_job = real_run
+        h.PROC = proc
+    # a ComfyUI that died between jobs is replaced before the next job, which then carries the new boot time
+    class Fresh(FakeProc):
+        def __init__(self, comfy_dir, port=8188):
+            super().__init__(root, url)
+
+        def start(self, extra_args=()):
+            return self
+
+        def wait_ready(self, timeout=600):
+            pass
+    proc.up = False
+    real_cls = jr.ComfyProcess
+    jr.ComfyProcess = Fresh
+    try:
+        r = h.handler(request())
+    finally:
+        jr.ComfyProcess = real_cls
+    check(r["status"] == "success" and proc.stopped == 2 and h.PROC is not proc and h.BOOT_PENDING is False and r["timing"]["boot"] >= 0,
+          "handler: a ComfyUI that died between jobs is replaced and the job runs")
+    proc.up = True
+    h.PROC = proc
     check(raises(lambda: h.handler(request(workflow={})), ValueError, "workflow"), "handler: a bad document raises ValueError")
     check(h.JOB_LOCK.acquire(blocking=False) and not h.JOB_LOCK.release(), "handler: the job lock is free after failures")
 
