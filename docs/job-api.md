@@ -48,8 +48,8 @@ whole result comes out of it, so any number of containers can run jobs side by s
   The decoded total is capped at **256 MiB**; above it the job returns `status: "error"` and no files.
 - `text`: text outputs of nodes, by node title.
 - `timing`: seconds. `boot` is the container's ComfyUI start time, charged to the first job that container ran (0 for
-  later ones); `billed = boot + run`. The idle time before a container scales down is billed by the provider but
-  belongs to no job.
+  later ones); `billed = boot + run`. It is a lower bound: `boot` starts when ComfyUI starts, so container allocation,
+  image load and Volume mount are not in it, and the idle time before a container scales down belongs to no job.
 - `cost`: `usd = billed * rate_per_hour / 3600`, with the rate from `cloud/gpu_rates.json` matched on the GPU name the
   container reports. A GPU-only estimate: the provider's CPU and memory charges are a few percent more. `rate_per_hour`
   and `usd` are `null` for a GPU not in the file.
@@ -57,6 +57,16 @@ whole result comes out of it, so any number of containers can run jobs side by s
 
 One job runs at a time on a ComfyUI process (new-file detection depends on it). A warm container takes the next job
 with its models loaded; each job's inputs and outputs are deleted afterwards, so no job sees another's files.
+
+Warm containers and failures:
+- ComfyUI runs with `--cache-none` (`job_runner.JOB_ARGS`). Its execution cache would otherwise skip the save nodes
+  of a repeated identical job (same graph, same input bytes), which then writes no files while the history still lists
+  them. `--cache-none` runs every node of every job, whatever its type; the price is that model loaders re-read their
+  weights on each job. If a listed file is still missing, the job is `status: "error"`, never a silent success.
+- The job's `timeout` is cut to the deployment's ceiling (`MODAL_JOB_TIMEOUT`).
+- After an infrastructure failure (ComfyUI died, did not answer, timed out) or when ComfyUI is found dead, the container
+  takes no more jobs (`job_runner.run_job_guarded` calls the provider's `recycle`; Modal:
+  `modal.experimental.stop_fetching_inputs`). The next job pays one cold start. A timed-out job's outputs are deleted.
 
 ## HTTP transport (Modal)
 
@@ -79,8 +89,8 @@ and checks `models` for what a workflow needs.
 
 ## What another provider implements
 
-Take a job document, call `job_runner.run_job(doc, proc, boot=..., rate=..., worker=...)` on a started
-`ComfyProcess`, return `job_runner.encode_result(result)`; map the transport's own submit/status calls onto the
+Take a job document, call `job_runner.run_job_guarded(doc, proc, recycle, boot=..., rate=..., worker=...,
+max_timeout=...)` on a started `ComfyProcess` (`recycle` stops the worker taking more jobs), return `job_runner.encode_result(result)`; map the transport's own submit/status calls onto the
 endpoints above (RunPod: `/run` and `/status`); serve `info` from `ComfyProcess.info()`.
 
 Try it: `python cloud/job_smoke.py --url <jobs url> --n 1` (needs `MODAL_KEY` / `MODAL_SECRET` in the environment).

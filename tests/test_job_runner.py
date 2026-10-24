@@ -36,7 +36,11 @@ def b64(data):
 class Fake(http.server.BaseHTTPRequestHandler):
     """POST /prompt "executes" at once: writes files into output/ (and temp/), then GET /history/<id> answers."""
     server_version = "fake"
-    mode = "ok"          # ok | node_errors | exec_error | big
+    mode = "ok"          # ok | node_errors | exec_error | big | hang (files written, history never appears)
+    simulate_cache = False      # True: an identical prompt writes no files, as ComfyUI does without --cache-none
+    seen = set()
+    interrupts = 0
+    died = False
     outdir = tempdir = None
     history = {}
     seen_inputs = {}
@@ -57,6 +61,8 @@ class Fake(http.server.BaseHTTPRequestHandler):
         if self.path == "/system_stats":
             return self.send(200, {"system": {"comfyui_version": "0.38.2"},
                                    "devices": [{"name": "cuda:0 NVIDIA L40S : cudaMallocAsync"}]})
+        if self.path == "/queue":
+            return self.send(200, {"queue_running": [], "queue_pending": []})
         if self.path.startswith("/history/"):
             pid = self.path.rsplit("/", 1)[1]
             return self.send(200, {pid: Fake.history[pid]} if pid in Fake.history else {})
@@ -69,6 +75,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
             Fake.cleared += 1
             return self.send(200, {})
         if self.path == "/interrupt":
+            Fake.interrupts += 1
             return self.send(200, {})
         if self.path != "/prompt":
             return self.send(404, {})
@@ -85,15 +92,23 @@ class Fake(http.server.BaseHTTPRequestHandler):
                 ["execution_start", {}], ["execution_error", {"node_type": "Pixelize", "exception_message": "boom"}]]}
             Fake.history["p1"] = {"status": status, "outputs": {}}
             return self.send(200, {"prompt_id": "p1", "number": 1, "node_errors": {}})
-        with open(os.path.join(Fake.outdir, "pixel_00001_.webp"), "wb") as fh:
-            fh.write(b"WEBP" * 10)
-        with open(os.path.join(Fake.outdir, "pixel_00001_.json"), "wb") as fh:          # unlisted sibling
-            fh.write(b'{"k": 1}')
-        os.makedirs(os.path.join(Fake.outdir, "sub"), exist_ok=True)
-        with open(os.path.join(Fake.outdir, "sub", "other.png"), "wb") as fh:
-            fh.write(b"\x89PNG" * 5 if Fake.mode != "big" else b"x" * 2000)
-        with open(os.path.join(Fake.tempdir, "preview.png"), "wb") as fh:
-            fh.write(b"prev")
+        key = json.dumps([graph, sorted((n, d.decode("latin1")) for n, d in Fake.seen_inputs.items())], sort_keys=True)
+        cached = Fake.simulate_cache and key in Fake.seen
+        Fake.seen.add(key)
+        if Fake.mode == "hang":
+            with open(os.path.join(Fake.outdir, "late.png"), "wb") as fh:
+                fh.write(b"late")
+            return self.send(200, {"prompt_id": "never", "number": 1, "node_errors": {}})
+        if not cached:
+            with open(os.path.join(Fake.outdir, "pixel_00001_.webp"), "wb") as fh:
+                fh.write(b"WEBP" * 10)
+            with open(os.path.join(Fake.outdir, "pixel_00001_.json"), "wb") as fh:          # unlisted sibling
+                fh.write(b'{"k": 1}')
+            os.makedirs(os.path.join(Fake.outdir, "sub"), exist_ok=True)
+            with open(os.path.join(Fake.outdir, "sub", "other.png"), "wb") as fh:
+                fh.write(b"\x89PNG" * 5 if Fake.mode != "big" else b"x" * 2000)
+            with open(os.path.join(Fake.tempdir, "preview.png"), "wb") as fh:
+                fh.write(b"prev")
         Fake.history["p1"] = {"status": status, "outputs": {
             "7": {"images": [{"filename": "pixel_00001_.webp", "subfolder": "", "type": "output"}]},
             "9": {"text": ["PASS 3 colours"]},
@@ -108,8 +123,13 @@ class FakeProc:
         for d in (self.input_dir, self.output_dir, self.temp_dir):
             os.makedirs(d, exist_ok=True)
 
+    up = True
+
     def gpu_name(self):
         return jr.ComfyProcess.gpu_name(self)
+
+    def alive(self):
+        return self.up
 
 
 GRAPH = {"1": {"class_type": "LoadImage", "inputs": {"image": "ss_cat.png"}, "_meta": {"title": "Input image"}},
@@ -225,6 +245,92 @@ with tempfile.TemporaryDirectory() as root:
         check(False, "run_job validates the document")
     except ValueError:
         check(True, "run_job validates the document")
+
+    # A1: an identical job on a warm container. Without --cache-none ComfyUI re-runs nothing: history lists files
+    # that were not written. That must never come back as a quiet success without files.
+    Fake.mode, Fake.simulate_cache, Fake.seen = "ok", True, set()
+    first = jr.run_job(job(), proc)
+    second = jr.run_job(job(), proc)
+    check(first["status"] == "success" and len(first["files"]) == 4, "A1: first job on the container returns its files")
+    check(second["status"] == "error" and any("did not write" in e and "pixel_00001_.webp" in e for e in second["errors"]),
+          f"A1: identical second job whose outputs came from ComfyUI's cache -> status error naming the file ({second['errors']})")
+    check(os.listdir(proc.input_dir) == [] and os.listdir(proc.temp_dir) == [], "A1: the cached job still cleans up")
+    Fake.simulate_cache = False
+    again = [jr.run_job(job(), proc) for _ in range(2)]
+    check(all(r["status"] == "success" and len(r["files"]) == 4 for r in again),
+          "A1: two identical jobs that both execute (what --cache-none gives) both return their files")
+    popen_calls = []
+    real_popen = jr.subprocess.Popen
+    jr.subprocess.Popen = lambda cmd, **kw: popen_calls.append(cmd) or type("P", (), {"poll": lambda self: None})()
+    try:
+        cp = jr.ComfyProcess(root, 8199)
+        check(not cp.alive(), "A2: alive() is False before start()")
+        cp.start()
+        jr.ComfyProcess(root, 8198).start(["--cpu"])
+    finally:
+        jr.subprocess.Popen = real_popen
+    check("--cache-none" in popen_calls[0] and "--cache-none" not in popen_calls[1],
+          "A1: ComfyProcess.start() adds --cache-none by default; explicit args replace it (refresh_info --cpu)")
+    check(cp.alive(), "A2: alive() is True while the process runs")
+    cp.proc = type("P", (), {"poll": lambda self: 137})()
+    check(not cp.alive(), "A2: alive() is False once ComfyUI exited")
+
+    # A2: a crash or a timeout stops the container taking jobs; a timeout leaves no outputs behind; A4: clamp.
+    recycled = []
+    proc.up = True
+    ok = jr.run_job_guarded(job(), proc, recycled.append)
+    check(ok["status"] == "success" and recycled == [], "A2: a good job recycles nothing")
+    Fake.mode = "node_errors"
+    r = jr.run_job_guarded(job(), proc, recycled.append)
+    check(r["status"] == "error" and recycled == [], "A2: a rejected graph is a result, not a reason to recycle")
+    try:
+        jr.run_job_guarded(job(inputs=[{"name": "../x", "data": ""}]), proc, recycled.append)
+        check(False, "A2: a bad document raises ValueError")
+    except ValueError:
+        check(recycled == [], "A2: a bad document (ValueError) recycles nothing")
+    Fake.mode, Fake.interrupts = "hang", 0
+    t0 = time.time()
+    try:
+        jr.run_job_guarded(job(timeout=3600), proc, recycled.append, max_timeout=1)
+        check(False, "A4: the deployment ceiling times the job out")
+    except RuntimeError as e:
+        took = time.time() - t0
+        check(took < 15 and "TimeoutError" in str(e) and Fake.interrupts == 1,
+              f"A4: timeout 3600 clamped to max_timeout=1 -> timed out and interrupted after {took:.1f}s ({e})")
+    check(len(recycled) == 1 and "TimeoutError" in recycled[0], f"A2: a timeout recycles the container ({recycled})")
+    check(os.listdir(proc.output_dir) == ["old.png"] and os.listdir(proc.input_dir) == [],
+          "A2: the timed-out job's outputs and inputs are deleted (no leak into the next job)")
+    Fake.mode = "ok"
+    nxt = jr.run_job_guarded(job(), proc, [].append)
+    check(nxt["status"] == "success" and not any(f["filename"] == "late.png" for f in nxt["files"]),
+          "A2: the next job does not return the timed-out job's file")
+    recycled.clear()
+    proc.up = False
+    try:
+        jr.run_job_guarded(job(), proc, recycled.append)
+        check(False, "A2: dead ComfyUI refuses the job")
+    except RuntimeError as e:
+        check(len(recycled) == 1 and "not running" in recycled[0] and "no more jobs" in str(e),
+              "A2: ComfyUI already dead at the start -> recycle and fail the job")
+    recycled.clear()
+
+    class Dying(FakeProc):
+        def alive(self):
+            return not Fake.died
+    dying = Dying(root, url)
+    real_run = jr.run_job
+
+    def run_then_die(*a, **kw):
+        out = real_run(*a, **kw)
+        Fake.died = True          # ComfyUI is killed right after the job (OOM), before the result is sent
+        return out
+    jr.run_job = run_then_die
+    try:
+        res = jr.run_job_guarded(job(), dying, recycled.append)
+    finally:
+        jr.run_job = real_run
+    check(res["status"] == "success" and len(recycled) == 1 and "exited during the job" in recycled[0],
+          "A2: ComfyUI gone after a finished job -> result returned, container recycled")
 server.shutdown()
 
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
