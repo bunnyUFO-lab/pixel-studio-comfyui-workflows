@@ -83,7 +83,7 @@ check("Execution timeout    3900" in err and "RUNPOD_API_KEY" in err, "snippet: 
 code, out, err = main_capture(["--dir", ROOT, "cloud", "runpod", "snippet", "--endpoint", "../x"])
 check(code == 1 and "endpoint" in err and out == "", "snippet: a bad endpoint id -> plain error")
 code, out, err = main_capture(["cloud", "runpod", "settings"])
-check(code == 0 and "3900 s" in out and "300 s" in out and "100 GB" in out and "RTX 4090" in out, "settings: the checklist")
+check(code == 0 and "3900 s" in out and "300 s" in out and "200 GB" in out and "RTX 4090" in out, "settings: the checklist")
 check("sk-" not in out and "rpa_" not in out, "settings: no key value")
 
 # ---- build --dry-run (git is mocked: the sha is abc1234)

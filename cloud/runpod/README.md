@@ -8,7 +8,7 @@ runs one job at a time, and RunPod scales the number of workers. Models live on 
 | --- | --- |
 | Image | `ghcr.io/bunnyufo-lab/psc-comfy-runpod:<ComfyUI ref>-<git sha>` (public package: open-source code only, no models, no secrets) |
 | GPU | 24 GB 4090 first, then 48 GB (L40S / RTX 6000 Ada), then 32 GB 5090. The PC runs every Pixel Studio workflow on a 4090 |
-| Cost | GPU only, flex workers, from `gpu_rates.json` (runpod.io/pricing, 24 Oct 2026): 4090 $1.10/h, 5090 $1.58/h, L40S $1.75/h. Active (always-on) workers are priced differently and are not modelled. A network volume is $7 a month per 100 GB |
+| Cost | GPU only, flex workers, from `gpu_rates.json` (runpod.io/pricing, 24 Oct 2026): 4090 $1.10/h, 5090 $1.58/h, L40S $1.75/h. Active (always-on) workers are priced differently and are not modelled. A network volume is about $0.07 a GB a month: the `pixel` set (145 GB) needs 200 GB, about $14 a month on top of the GPU time |
 | Limits | request 10 MB (inputs inline, at most 9 MiB), result kept 30 minutes, one job per worker |
 
 ## One-time setup
@@ -31,12 +31,12 @@ Steps 2 and 3 are the owner's: they publish an image and need a RunPod account a
    ```
 
 3. **Owner:** in the RunPod console create an API key (Settings > API Keys; export it as `RUNPOD_API_KEY` in the
-   environment Pixel Studio runs with), a **network volume** (100 GB, in a data center that has both 4090 and L40S) and
+   environment Pixel Studio runs with), a **network volume** (200 GB: the `pixel` set downloads 145 GB, measured 24 Oct 2026, so 160 GB is the least that fits; in a data center that has both 4090 and L40S) and
    a **queue-based Serverless endpoint** from the image. `pixel-studio-comfy cloud runpod settings` prints what to
    enter: GPU priority, 0 active and 3 max workers, idle timeout 300 s, **execution timeout 3900 s** (the default 600 s
    kills video jobs), FlashBoot on, scaling by request count (1), container disk 20 GB, the volume attached.
 4. Fill the volume with models. The `download` job runs `models.py` on a worker (it resumes partial files: run it again
-   if it hits the execution timeout). `pixel` is every workflow Sprite Studio uses (sizes are in `env/pixel.env`; size the volume from `list_models` or Modal's Volume; or name
+   if it hits the execution timeout). `pixel` is every workflow Sprite Studio uses (sizes are in `env/pixel.env`; `list_models` shows what is missing; or name
    workflows, `starter`, `all`):
 
    ```bash
@@ -73,8 +73,11 @@ Give that key `s3:PutObject` and `s3:GetObject` on the prefix only, and add a 1-
 
 - **Inputs** are inline base64; the request JSON may be at most 9 MiB (`PSC_INLINE_MAX_BYTES`, default 9437184). A
   larger job fails with an error naming its size; use the Modal source for it.
-- **Cancels and timeouts**: RunPod can move on while the old job's prompt still runs. The next job on that worker first
-  interrupts and clears ComfyUI, waits up to 120 s for the old job to end, then runs.
+- **Cancels and timeouts**: the worker registers an async handler that runs the job in a thread (the SDK runs a sync
+  handler on its own event loop, where a cancel could not arrive until the job ended). When RunPod cancels or times
+  out a job, the handler interrupts ComfyUI and clears its queue at once; the job's thread ends and the worker is free.
+  If the thread is still finishing when the next job arrives, that job interrupts again and waits up to 120 s.
+  Not yet verified on real RunPod.
 - **Crashes**: if ComfyUI died, did not answer or timed out, the worker stops it and the next job starts a fresh one
   (one more boot, charged to that job); the failed job reads FAILED with the reason.
 - **Boot** (starting ComfyUI) is charged to the worker's first job, as on Modal; `info` is a job, so it wakes a worker

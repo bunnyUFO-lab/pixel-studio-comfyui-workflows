@@ -13,6 +13,7 @@ Infrastructure problems raise (RunPod marks the job FAILED with the message); a 
 result with status "error", as on Modal. The `runpod` and `boto3` packages are imported only where they are used, so
 the tests import this module without them. Local test: python handler.py --rp_serve_api (flags parsed by the SDK).
 """
+import asyncio
 import collections
 import json
 import mimetypes
@@ -107,16 +108,25 @@ def _recycle(reason):
             PROC = None
 
 
-def _settle(proc):
-    """Take JOB_LOCK. If it is held, a cancelled or timed-out job's thread is still running (the SDK moved on): stop
-    its prompt, then wait for the thread to let go. The caller releases the lock."""
-    if JOB_LOCK.acquire(blocking=False):
+def _interrupt():
+    """Stop the prompt ComfyUI is running and clear its queue (best effort). Uses the current process; none, nothing to do."""
+    proc = PROC
+    if proc is None:
         return
     for path, body in (("/interrupt", {}), ("/queue", {"clear": True})):
         try:
             job_runner._request(proc.url + path, body, timeout=10)
         except (OSError, ValueError):
             pass
+
+
+def _settle():
+    """Take JOB_LOCK. If it is held, a cancelled or timed-out job's thread is still running: stop its prompt, then wait
+    for the thread to let go. Runs before _proc(), so an orphan that recycles ComfyUI cannot leave the next job a dead
+    process. The caller releases the lock."""
+    if JOB_LOCK.acquire(blocking=False):
+        return
+    _interrupt()
     if not JOB_LOCK.acquire(timeout=SETTLE_SECONDS):
         raise RuntimeError("the previous, cancelled job is still running on this worker")
 
@@ -179,9 +189,9 @@ def _run_job(doc, job_id, progress, uploader):
     if n > budget:
         raise ValueError(f"the job is {_size(n)}, over the inline limit of {_size(budget)}: RunPod takes at most 10 MB "
                          "per request; use the Modal source for inputs this large")
-    proc = _proc()
-    _settle(proc)
+    _settle()
     try:
+        proc = _proc()
         try:
             # run_job_guarded re-raises infrastructure errors as RuntimeError("Type: message") after calling _recycle
             result = job_runner.run_job_guarded(doc, proc, _recycle, on_progress=progress,
@@ -262,9 +272,16 @@ def handler(job, progress=None, uploader=None):
     raise ValueError(UNKNOWN)
 
 
-def _serve(job):
-    # Results are documents with `errors`, never a top-level "error" key: the SDK reads that key as a failure.
-    return handler(job)
+async def _serve(job):
+    """The handler RunPod's SDK runs. It is async because the SDK calls a sync handler on its own event loop, which then
+    cannot deliver a cancel or timeout until the job ends. The job runs in a thread; when the SDK cancels this task,
+    ComfyUI is interrupted at once and the thread ends the job and releases JOB_LOCK (_settle is the backstop).
+    Results are documents with `errors`, never a top-level "error" key: the SDK reads that key as a failure."""
+    try:
+        return await asyncio.to_thread(handler, job)
+    except asyncio.CancelledError:
+        await asyncio.to_thread(_interrupt)
+        raise
 
 
 if __name__ == "__main__":

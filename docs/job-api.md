@@ -118,8 +118,9 @@ Limits that shape the documents: `/run` takes at most **10 MB** of request JSON 
   bucket configured on the endpoint (`PSC_S3_*`) and returns presigned GET `url`s in place of `data`. Without a
   bucket the result is `status: "error"` and says so. The bucket credentials live on the endpoint as RunPod secrets;
   a client only does a plain GET.
-- One job at a time per worker; scale-out is more workers. A cancelled job's prompt is interrupted when the worker's
-  next job starts.
+- One job at a time per worker; scale-out is more workers. A cancelled or timed-out job's prompt is interrupted at
+  once (the worker's handler is async and interrupts ComfyUI on cancel); a job that arrives while the old thread still
+  ends waits for it (up to 120 s).
 
 A failed job (`FAILED`) is an infrastructure failure, as on Modal; a rejected graph or a failed node is a `COMPLETED`
 job whose result has `status: "error"`.

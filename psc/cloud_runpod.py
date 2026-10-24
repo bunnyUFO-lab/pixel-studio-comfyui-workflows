@@ -65,7 +65,7 @@ def settings_text(image=REGISTRY_IMAGE + ":latest"):
         "  Execution timeout    3900 s      (a job may run 3600 s; the default 600 s would kill video jobs)",
         "  Scaling              request count, scaler value 1",
         "  Container disk       20 GB",
-        "  Network volume       100 GB standard, in a data center that has both 4090 and L40S; attach it to the endpoint",
+        "  Network volume       200 GB standard (the pixel set is 145 GB), in a data center that has both 4090 and L40S; attach it to the endpoint",
         "                       (mounted at /runpod-volume; the worker links ComfyUI's models folder to it)",
         "  Environment          optional, for outputs over 9 MB: PSC_S3_BUCKET, PSC_S3_ENDPOINT, PSC_S3_PREFIX,",
         "                       AWS_REGION, and AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY as RunPod secrets",

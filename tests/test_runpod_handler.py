@@ -1,5 +1,6 @@
 """CPU tests for the RunPod worker (cloud/runpod/handler.py): a fake ComfyUI on 127.0.0.1, no runpod, boto3 or GPU.
     python tests/test_runpod_handler.py"""
+import asyncio
 import base64
 import http.server
 import json
@@ -39,7 +40,7 @@ def b64(data):
 # ----------------------------------------------------------------------------- fake ComfyUI (as in test_job_runner.py)
 class Fake(http.server.BaseHTTPRequestHandler):
     server_version = "fake"
-    mode = "ok"                  # ok | big
+    mode = "ok"                  # ok | big | hang (the prompt ends only when interrupted)
     outdir = tempdir = indir = None
     history = {}
     posts = []
@@ -79,11 +80,15 @@ class Fake(http.server.BaseHTTPRequestHandler):
             return self.send(200, {})
         if self.path == "/interrupt":
             Fake.interrupted.set()
+            if Fake.mode == "hang":
+                Fake.history["p2"] = {"status": {"status_str": "error", "completed": False, "messages": []}, "outputs": {}}
             return self.send(200, {})
         if self.path == "/queue":
             return self.send(200, {})
         if self.path != "/prompt":
             return self.send(404, {})
+        if Fake.mode == "hang":
+            return self.send(200, {"prompt_id": "p2", "number": 2, "node_errors": {}})
         time.sleep(0.05)
         with open(os.path.join(Fake.outdir, "pixel_00001_.webp"), "wb") as fh:
             fh.write(b"WEBP" * 10)
@@ -306,6 +311,61 @@ with tempfile.TemporaryDirectory() as root:
     finally:
         h.SETTLE_SECONDS = 120
         h.JOB_LOCK.release()
+
+    # _settle before _proc: an orphan that recycles ComfyUI must not leave the next job a dead process
+    old_proc_fn, started = h._proc, []
+    h.JOB_LOCK.acquire()
+
+    def orphan_recycles():
+        Fake.interrupted.wait(10)
+        h._recycle("orphan failed after the interrupt")          # stops and forgets PROC
+        h.JOB_LOCK.release()
+    Fake.interrupted.clear()
+    h.PROC, h.BOOT, h.BOOT_PENDING = proc, 0.0, False
+    threading.Thread(target=orphan_recycles, daemon=True).start()
+
+    def fresh_proc():
+        if h.PROC is None:
+            started.append(1)
+            h.PROC, h.BOOT, h.BOOT_PENDING = FakeProc(root, url), 4.0, True
+        return h.PROC
+    h._proc = fresh_proc
+    try:
+        r = h.handler(request())
+    finally:
+        h._proc = old_proc_fn
+    check(r["status"] == "success" and started == [1] and r["timing"]["boot"] == 4.0,
+          "settle: the orphan recycled ComfyUI, the next job started a new process and carried its boot")
+
+    # _serve: cancelling the task interrupts ComfyUI and the job's thread frees the lock
+    async def cancel_run():
+        Fake.mode = "hang"
+        Fake.posts.clear()
+        Fake.interrupted.clear()
+        h.PROC, h.BOOT_PENDING = proc, False
+        task = asyncio.ensure_future(h._serve(request()))
+        for _ in range(100):
+            await asyncio.sleep(0.05)
+            if any(p == "/prompt" for p, _ in Fake.posts):
+                break
+        task.cancel()
+        try:
+            await task
+            cancelled = False
+        except asyncio.CancelledError:
+            cancelled = True
+        return cancelled
+    try:
+        cancelled = asyncio.run(cancel_run())
+    finally:
+        Fake.mode = "ok"
+    check(cancelled, "serve: cancelling the task raises CancelledError")
+    check(Fake.interrupted.is_set() and ("/queue", {"clear": True}) in Fake.posts, "serve: cancel sent /interrupt and cleared the queue")
+    freed = h.JOB_LOCK.acquire(timeout=10)
+    check(freed, "serve: the job's thread ended and released the lock")
+    if freed:
+        h.JOB_LOCK.release()
+    check(asyncio.run(h._serve(request()))["status"] == "success", "serve: an uncancelled job returns its result")
 
 server.shutdown()
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
