@@ -293,9 +293,12 @@ def jobs():
         if call is None:
             return reply(404, {"error": "unknown job id"})
         progress = await state.get.aio(f"job:{job_id}")
+        cancelled = await state.get.aio(f"cancelled:{job_id}")      # set by DELETE: Modal reports the cancel late
         try:
             result = await call.get.aio(timeout=0)
         except (TimeoutError, modal.exception.TimeoutError):
+            if cancelled:
+                return {"id": job_id, "status": "cancelled", "progress": None}
             return {"id": job_id, "status": "running" if progress else "queued", "progress": progress}
         except modal.exception.OutputExpiredError:
             return reply(404, {"error": "result expired"})
@@ -304,6 +307,8 @@ def jobs():
         except Exception as e:                  # modal.exception.NotFoundError / InvalidError for a made-up id
             if isinstance(e, (modal.exception.NotFoundError, modal.exception.InvalidError)):
                 return reply(404, {"error": "unknown job id"})
+            if cancelled:
+                return {"id": job_id, "status": "cancelled", "progress": None}
             return {"id": job_id, "status": "failed", "progress": None, "error": str(e)[:2000]}
         try:
             await state.pop.aio(f"job:{job_id}")
@@ -318,6 +323,7 @@ def jobs():
             return reply(404, {"error": "unknown job id"})
         # terminate_containers: otherwise the ComfyUI subprocess would keep running the prompt, and the next job
         # on that container would wait behind it. Costs one cold start; cancels are rare.
+        await state.put.aio(f"cancelled:{job_id}", True)
         await call.cancel.aio(terminate_containers=True)
         return {"id": job_id, "status": "cancelled"}
 
