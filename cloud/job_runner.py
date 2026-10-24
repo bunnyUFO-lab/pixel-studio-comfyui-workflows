@@ -16,6 +16,7 @@ Only the standard library is required. Progress over ComfyUI's WebSocket needs `
 (the job still runs; the result is the same).
 """
 import base64
+import copy
 import json
 import os
 import re
@@ -34,10 +35,11 @@ MAX_OUTPUT_BYTES = 256 * 1024 * 1024
 MAX_TIMEOUT = 3600
 HISTORY_KEYS = ("images", "gifs", "videos", "audio")
 # ComfyUI keeps an execution cache between prompts: an identical graph re-runs nothing, so its save nodes write no
-# files while the history still lists them. A job container must not do that. --cache-none runs every node of
-# every prompt, whatever the node type (a per-job filename_prefix would miss nodes that have none). Models are
-# re-read from the Volume on each job; ComfyUI v0.38.2 has the flag.
-JOB_ARGS = ("--cache-none",)
+# files while the history still lists them. A job must not get that. The cache stays on (loaders, encoders and
+# samplers keep their models in VRAM); instead run_job adds a per-job MARKER_KEY input to every output node, which
+# changes only that node's cache key, so output nodes always re-run. ComfyUI passes a node only the inputs it declares.
+JOB_ARGS = ()
+MARKER_KEY = "psc_job"
 
 
 class InputTooLarge(ValueError):
@@ -304,6 +306,49 @@ def _within(root, *parts):
     return p if p.startswith(base + os.sep) else None
 
 
+def _output_classes(proc):
+    """The class_types with output_node true in /object_info, fetched once per process; None if unreadable."""
+    cached = getattr(proc, "_psc_output_classes", None)
+    if cached is not None:
+        return cached
+    try:
+        code, info = _request(proc.url + "/object_info", timeout=120)
+    except (OSError, ValueError):
+        return None
+    if code != 200 or not isinstance(info, dict) or not info:
+        return None
+    classes = frozenset(k for k, v in info.items() if isinstance(v, dict) and v.get("output_node"))
+    try:
+        proc._psc_output_classes = classes
+    except AttributeError:
+        pass
+    return classes
+
+
+def output_node_ids(graph, classes=None):
+    """Ids of the output nodes of an API graph: classes with output_node true, or, when `classes` is None
+    (object_info unreadable), the nodes no other node links to."""
+    if classes is not None:
+        return [nid for nid, n in graph.items() if n.get("class_type") in classes]
+    linked = set()
+    for node in graph.values():
+        for v in (node.get("inputs") or {}).values():
+            if isinstance(v, list) and len(v) == 2 and isinstance(v[0], (str, int)) and str(v[0]) in graph:
+                linked.add(str(v[0]))
+    return [nid for nid in graph if str(nid) not in linked]
+
+
+def mark_outputs(graph, classes=None, job_id=None):
+    """A deep copy of `graph` with a unique MARKER_KEY input on each output node (an existing input is kept)."""
+    marked = copy.deepcopy(graph)
+    marker = job_id or uuid.uuid4().hex
+    for nid in output_node_ids(marked, classes):
+        inputs = marked[nid].setdefault("inputs", {})
+        if isinstance(inputs, dict):
+            inputs.setdefault(MARKER_KEY, marker)
+    return marked
+
+
 def run_job(doc, proc, on_progress=None, boot=0.0, rate=None, worker="", max_timeout=None):
     """Run one job document on `proc` and return the result document (file data as bytes: encode_result for JSON).
 
@@ -331,12 +376,13 @@ def run_job(doc, proc, on_progress=None, boot=0.0, rate=None, worker="", max_tim
                 fh.write(data)
             written.append(path)
         client_id = uuid.uuid4().hex
+        submitted = mark_outputs(graph, _output_classes(proc))
         progress = None
         if on_progress is not None:
             progress = _Progress(proc.url, client_id, len(graph), on_progress)
             progress.start()
         try:
-            code, res = _request(proc.url + "/prompt", {"prompt": graph, "client_id": client_id})
+            code, res = _request(proc.url + "/prompt", {"prompt": submitted, "client_id": client_id})
             if code != 200 or not isinstance(res, dict) or "prompt_id" not in res or res.get("node_errors"):
                 result["status"] = "error"
                 result["errors"] += _prompt_errors(res)

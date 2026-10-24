@@ -62,10 +62,14 @@ One job runs at a time on a ComfyUI process (new-file detection depends on it). 
 with its models loaded; each job's inputs and outputs are deleted afterwards, so no job sees another's files.
 
 Warm containers and failures:
-- ComfyUI runs with `--cache-none` (`job_runner.JOB_ARGS`). Its execution cache would otherwise skip the save nodes
-  of a repeated identical job (same graph, same input bytes), which then writes no files while the history still lists
-  them. `--cache-none` runs every node of every job, whatever its type; the price is that model loaders re-read their
-  weights on each job. If a listed file is still missing, the job is `status: "error"`, never a silent success.
+- ComfyUI keeps its execution cache, so a warm container keeps loaders, encoders and samplers (and their models in
+  VRAM) between jobs. Left alone, the cache would skip the save nodes of a repeated identical job (same graph, same
+  input bytes), which then write no files while the history still lists them. So `job_runner.run_job` submits a deep
+  copy of the graph with a per-job `"psc_job": <uuid>` input on every output node (`output_node: true` in
+  `/object_info`, read once per ComfyUI process; if that is unreadable, the nodes no other node links to). ComfyUI
+  includes every prompt input in a node's cache key but passes a node only the inputs it declares, so only the output
+  nodes (and anything downstream of them) re-run. If a listed file is still missing, the job is `status: "error"`,
+  never a silent success.
 - The job's `timeout` is cut to the deployment's ceiling (`MODAL_JOB_TIMEOUT`).
 - After an infrastructure failure (ComfyUI died, did not answer, timed out) or when ComfyUI is found dead, the container
   takes no more jobs (`job_runner.run_job_guarded` calls the provider's `recycle`; Modal:
