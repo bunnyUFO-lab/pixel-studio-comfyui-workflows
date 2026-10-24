@@ -37,7 +37,8 @@ HISTORY_KEYS = ("images", "gifs", "videos", "audio")
 # ComfyUI keeps an execution cache between prompts: an identical graph re-runs nothing, so its save nodes write no
 # files while the history still lists them. A job must not get that. The cache stays on (loaders, encoders and
 # samplers keep their models in VRAM); instead run_job adds a per-job MARKER_KEY input to every output node, which
-# changes only that node's cache key, so output nodes always re-run. ComfyUI passes a node only the inputs it declares.
+# changes only that node's cache key, so output nodes always re-run. ComfyUI passes a node only the inputs it declares
+# (VHS Video Combine also receives it in **kwargs and ignores it).
 JOB_ARGS = ()
 MARKER_KEY = "psc_job"
 
@@ -327,15 +328,12 @@ def _output_classes(proc):
 
 def output_node_ids(graph, classes=None):
     """Ids of the output nodes of an API graph: classes with output_node true, or, when `classes` is None
-    (object_info unreadable), the nodes no other node links to."""
+    (object_info unreadable), every node. An output node can feed another node (SaveSpriteSheet, SaveDirections), so
+    "the nodes nothing links to" would miss it; marking all of them re-runs the whole graph for that one job
+    (--cache-none behaviour): slower, never a skipped save."""
     if classes is not None:
         return [nid for nid, n in graph.items() if n.get("class_type") in classes]
-    linked = set()
-    for node in graph.values():
-        for v in (node.get("inputs") or {}).values():
-            if isinstance(v, list) and len(v) == 2 and isinstance(v[0], (str, int)) and str(v[0]) in graph:
-                linked.add(str(v[0]))
-    return [nid for nid in graph if str(nid) not in linked]
+    return list(graph)
 
 
 def mark_outputs(graph, classes=None, job_id=None):
@@ -466,19 +464,32 @@ def _prompt_errors(res):
 
 
 def _wait_history(proc, pid, deadline):
-    """ComfyUI adds the history entry when the prompt has finished (or failed)."""
-    while True:
-        code, hist = _request(proc.url + "/history/" + pid, timeout=30)
-        if code == 200 and isinstance(hist, dict) and pid in hist:
-            return hist[pid]
-        if time.time() > deadline:
-            try:
-                _request(proc.url + "/interrupt", {}, timeout=10)
-            except (OSError, ValueError):
-                pass
-            _wait_idle(proc)
-            raise TimeoutError("job did not finish before its timeout")
-        time.sleep(0.5)
+    """ComfyUI adds the history entry when the prompt has finished (or failed). If the wait is cut short from outside
+    (Modal cancels the input: InputCancellation is a BaseException; KeyboardInterrupt), ComfyUI is told to
+    /interrupt first, so it stops sampling at once instead of running the prompt on the GPU while the container
+    is being torn down or, if the container is reused, while the next job waits behind it."""
+    try:
+        while True:
+            code, hist = _request(proc.url + "/history/" + pid, timeout=30)
+            if code == 200 and isinstance(hist, dict) and pid in hist:
+                return hist[pid]
+            if time.time() > deadline:
+                _interrupt(proc)
+                raise TimeoutError("job did not finish before its timeout")
+            time.sleep(0.5)
+    except Exception:
+        raise
+    except BaseException:
+        _interrupt(proc, seconds=5)
+        raise
+
+
+def _interrupt(proc, seconds=20):
+    try:
+        _request(proc.url + "/interrupt", {}, timeout=10)
+    except (OSError, ValueError):
+        pass
+    _wait_idle(proc, seconds)
 
 
 def _wait_idle(proc, seconds=20):

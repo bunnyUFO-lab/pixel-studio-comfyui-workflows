@@ -66,8 +66,8 @@ Warm containers and failures:
   VRAM) between jobs. Left alone, the cache would skip the save nodes of a repeated identical job (same graph, same
   input bytes), which then write no files while the history still lists them. So `job_runner.run_job` submits a deep
   copy of the graph with a per-job `"psc_job": <uuid>` input on every output node (`output_node: true` in
-  `/object_info`, read once per ComfyUI process; if that is unreadable, the nodes no other node links to). ComfyUI
-  includes every prompt input in a node's cache key but passes a node only the inputs it declares, so only the output
+  `/object_info`, read once per ComfyUI process; if that is unreadable, every node: slower for that job, never a skipped save). ComfyUI
+  includes every prompt input in a node's cache key but passes a node only the inputs it declares (VHS Video Combine also receives it in `**kwargs` and ignores it), so only the output
   nodes (and anything downstream of them) re-run. If a listed file is still missing, the job is `status: "error"`,
   never a silent success.
 - The job's `timeout` is cut to the deployment's ceiling (`MODAL_JOB_TIMEOUT`).
@@ -85,6 +85,13 @@ token; there is no token of our own). Without them every path answers 401.
 | `POST /v1/jobs` | Validate and queue a job. `202 {"id": "<call id>", "status": "queued"}`, `400 {"error"}` for a bad document, `413` for inputs over the cap. |
 | `GET /v1/jobs/{id}` | `{"id", "status", "progress", "result"?, "error"?}`. `status` is `queued` (waiting for or starting a container), `running`, `done` (with `result`), `failed` (with `error`) or `cancelled`. `404` for an unknown id or an expired result. A finished result stays readable for a while, so a dropped download is retried by asking again. |
 | `DELETE /v1/jobs/{id}` | Cancel; the container is terminated so the next job does not wait behind the running prompt. `{"status": "cancelled"}`. |
+
+Cancel and the container's lifetime: the cancel call sets `terminate_containers=True` (Modal tells the worker to stop
+the container, it is not left to the idle window), and the cancelled input interrupts ComfyUI (`/interrupt`) before
+it unwinds. `scaledown_window` (`--idle`) does not apply to that container. A live test (3d, `--idle 60`) still saw
+the terminated GPU container listed for about 3 min; Modal's docs give no shutdown time for a terminated container
+(the `@modal.exit` hook has 30 s, ComfyUI's stop waits up to 20 s), so treat that tail as Modal's teardown lag, which
+the code cannot shorten. It is not a busy ComfyUI and the container takes no further job.
 | `GET /v1/info` | `{"object_info": {...}, "models": {"<folder>": [files]}, "comfyui_version", "updated"}` from a cache, so no GPU wakes. Refreshed when empty, with `?refresh=1`, and by every container start. |
 | `GET /v1/health` | `{"ok", "protocol", "app", "gpu": [...], "max_containers", "idle_seconds"}`. Never wakes a GPU. |
 
