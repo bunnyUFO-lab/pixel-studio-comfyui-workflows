@@ -1,0 +1,21 @@
+# Bearer-token gateway for ComfyUI (see gateway.compose.yml). The order is the contract:
+#   no valid token -> 401, valid token but a path Pixel Studio does not use -> 404, else proxy to ComfyUI.
+# Every allowed path is also allowed under /api, which ComfyUI serves as well.
+:8080 {
+	@authed header Authorization "Bearer {$PSC_TOKEN}"
+
+	@allowed path /prompt /history /history/* /view /upload/image /object_info /object_info/* /ws /queue /interrupt /system_stats /pixelstudio/* /api/prompt /api/history /api/history/* /api/view /api/upload/image /api/object_info /api/object_info/* /api/ws /api/queue /api/interrupt /api/system_stats /api/pixelstudio/*
+
+	handle @authed {
+		handle @allowed {
+			reverse_proxy comfyui:8188
+		}
+		handle {
+			respond 404
+		}
+	}
+
+	handle {
+		respond 401
+	}
+}

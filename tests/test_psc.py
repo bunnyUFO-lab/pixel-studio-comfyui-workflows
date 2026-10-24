@@ -178,5 +178,80 @@ sa = p3.parse_args(["setup", "--yes", "--no-up", "--port", "8189", "--models", "
 check((sa.yes, sa.no_up, sa.port, sa.models, sa.project_name, sa.lan) == (True, True, 8189, "a/b", "psc-smoke", True), "parser: setup options")
 check(p3.parse_args(["update", "--no-up"]).no_up is True, "parser: update --no-up")
 
+# ---- 1c: gateway detection, token helpers, doctor gateway checks
+from psc import token_cmd  # noqa: E402
+from psc.stack import Stack  # noqa: E402
+
+tok = token_cmd.new_token()
+check(len(tok) >= 43 and all(ch.isalnum() or ch in "-_" for ch in tok), "new_token: 32 random bytes, URL-safe characters")
+check(token_cmd.new_token() != token_cmd.new_token(), "new_token: differs each time")
+check(token_cmd.set_secret("A=1\nPSC_TOKEN=\nB=2\n", "PSC_TOKEN", "x") == "A=1\nPSC_TOKEN=x\nB=2\n", "set_secret: replaces an empty value")
+check(token_cmd.set_secret("PSC_TOKEN=old\n", "PSC_TOKEN", "new") == "PSC_TOKEN=new\n", "set_secret: replaces a set value (rotate)")
+check(token_cmd.set_secret("# PSC_TOKEN=comment\nA=1\n", "PSC_TOKEN", "n") == "# PSC_TOKEN=comment\nA=1\nPSC_TOKEN=n\n", "set_secret: appends when only a comment mentions the key")
+check(token_cmd.set_secret("A=1\r\nPSC_TOKEN=\r\n", "PSC_TOKEN", "x") == "A=1\r\nPSC_TOKEN=x\r\n", "set_secret: keeps CRLF")
+check(token_cmd.set_secret("A=1", "PSC_TOKEN", "x") == "A=1\nPSC_TOKEN=x\n", "set_secret: file without a final newline")
+
+check(core.gateway_enabled({"PSC_GATEWAY": "1"}) and core.gateway_enabled({"PSC_GATEWAY": "true"}), "gateway_enabled: 1 and true")
+check(not core.gateway_enabled({}) and not core.gateway_enabled({"PSC_GATEWAY": "0"}) and not core.gateway_enabled({"PSC_GATEWAY": ""}), "gateway_enabled: off by default, 0, empty")
+check(core.compose_files({}) == [] and core.compose_files({"PSC_GATEWAY": "1"}) == ["docker-compose.yml", "docker/gateway.compose.yml"], "compose_files: none without the gateway, two files with it")
+check(core.bearer_headers("abc") == {"Authorization": "Bearer abc"} and core.bearer_headers("") == {}, "bearer_headers")
+
+
+class FakeStack:
+    """Just enough of Stack for check_gateway: statuses by (path, authorised)."""
+
+    url = "http://127.0.0.1:8189"
+
+    def __init__(self, headers, statuses):
+        self.headers, self.statuses = headers, statuses
+
+    def api_headers(self):
+        return self.headers
+
+    def http_status(self, path, headers=None, timeout=5):
+        code = self.statuses[(path, bool(headers))]
+        if code is None:
+            raise OSError("down")
+        return code
+
+
+good = FakeStack({"Authorization": "Bearer t"}, {("/system_stats", False): 401, ("/manager/queue/status", True): 404})
+check(local.check_gateway(good).status == "OK", "doctor gateway: 401 without a token and 404 for /manager -> OK")
+open_gw = FakeStack({"Authorization": "Bearer t"}, {("/system_stats", False): 200, ("/manager/queue/status", True): 404})
+check(local.check_gateway(open_gw).status == "FAIL", "doctor gateway: answering without a token -> FAIL")
+manager_open = FakeStack({"Authorization": "Bearer t"}, {("/system_stats", False): 401, ("/manager/queue/status", True): 200})
+check(local.check_gateway(manager_open).status == "FAIL", "doctor gateway: /manager reachable -> FAIL")
+check(local.check_gateway(FakeStack({}, {})).status == "FAIL", "doctor gateway: empty PSC_TOKEN -> FAIL")
+down = FakeStack({"Authorization": "Bearer t"}, {("/system_stats", False): None, ("/manager/queue/status", True): None})
+check(local.check_gateway(down).status == "WARN", "doctor gateway: no answer -> WARN")
+
+import tempfile  # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    st = Stack(tmp)
+    check(st.compose_files() == [] and st.api_headers() == {} and not st.gateway, "Stack: gateway off by default, no header")
+    with open(os.path.join(tmp, ".env"), "w") as f:
+        f.write("PSC_GATEWAY=1\n")
+    check(st.compose_files() == ["docker-compose.yml", "docker/gateway.compose.yml"] and st.gateway, "Stack: PSC_GATEWAY=1 adds the override file")
+    check(st.api_headers() == {}, "Stack: gateway on but no .secrets.env -> no header")
+    with open(os.path.join(tmp, ".secrets.env"), "w") as f:
+        f.write("PSC_TOKEN=secret123\n")
+    check(st.api_headers() == {"Authorization": "Bearer secret123"}, "Stack: header from PSC_TOKEN in .secrets.env")
+    ensured = token_cmd.ensure_token(st)
+    check(ensured == "secret123", "ensure_token: keeps an existing token")
+    os.remove(os.path.join(tmp, ".secrets.env"))
+    created = token_cmd.ensure_token(st)
+    check(len(created) >= 43 and token_cmd.current_token(st) == created, "ensure_token: creates the file and the token")
+
+check(cli.build_parser().parse_args(["token", "show"]).func is token_cmd.cmd_show and cli.build_parser().parse_args(["token", "rotate"]).func is token_cmd.cmd_rotate, "parser: token show and rotate")
+check(cli.build_parser().parse_args(["setup", "--gateway"]).gateway is True, "parser: setup --gateway")
+with open(os.path.join(ROOT, "docker", "Caddyfile"), encoding="utf-8") as f:
+    caddyfile = f.read()
+check("{$PSC_TOKEN}" in caddyfile and "respond 401" in caddyfile and "respond 404" in caddyfile and caddyfile.index("handle @authed") < caddyfile.rindex("respond 401"),
+      "Caddyfile: token placeholder, 404 inside the authed block, 401 last")
+with open(os.path.join(ROOT, "docker", "gateway.compose.yml"), encoding="utf-8") as f:
+    override = f.read()
+check("!reset" in override and ":latest" not in override and "caddy:2." in override, "gateway.compose.yml: ports reset, pinned caddy tag")
+
 print("\n%d/%d passed" % (sum(RESULTS), len(RESULTS)))
 sys.exit(0 if all(RESULTS) else 1)

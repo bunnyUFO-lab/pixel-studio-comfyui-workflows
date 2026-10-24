@@ -162,7 +162,7 @@ def check_container(stack):
 
 
 def api_headers(stack):
-    return {}
+    return stack.api_headers()
 
 
 def check_api(stack, state):
@@ -192,6 +192,21 @@ def check_models(stack, state):
     return Check("WARN", "models", "%d/%d present, %d missing: %s" % (ok, total, missing + partial, shown))
 
 
+def check_gateway(stack):
+    """With the gateway on: no token -> 401, and a path outside the allow list (/manager) -> 404 with the token."""
+    headers = stack.api_headers()
+    if not headers:
+        return Check("FAIL", "gateway", "PSC_GATEWAY=1 but PSC_TOKEN is empty in .secrets.env: run pixel-studio-comfy token show")
+    try:
+        anon = stack.http_status("/system_stats")
+        closed = stack.http_status("/manager/queue/status", headers)
+    except OSError:
+        return Check("WARN", "gateway", "no answer at %s, so the 401 and 404 checks were skipped" % stack.url)
+    if anon == 401 and closed == 404:
+        return Check("OK", "gateway", "no token -> 401, /manager with the token -> 404")
+    return Check("FAIL", "gateway", "expected 401 without a token and 404 for /manager with it, got %s and %s" % (anon, closed))
+
+
 def run_doctor(stack):
     checks = [check_python()]
     checks += check_stack_files(stack)
@@ -210,6 +225,8 @@ def run_doctor(stack):
     checks.append(check_disk(stack))
     checks.append(container or skipped("container"))
     checks.append(check_api(stack, state))
+    if stack.gateway:
+        checks.append(check_gateway(stack))
     checks.append(check_models(stack, state) if usable else skipped("models"))
     return checks
 
