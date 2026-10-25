@@ -62,7 +62,7 @@ python $P import character/12 clip/attack.mp4                # a video asset, wh
 python $P call animate --arg asset=<sprite ref> --arg motion_reference=<video id>
 python $P wait <job_id>                                        # then: python $P download <result ref> --out out/knight
 ```
-An animated GIF imports as a reference, not a video: if `import` prints that note, ask the user to convert it to mp4.
+`import` sends `.gif` and `.webp` as `kind=auto`, so an animated one lands as a reference (or whatever kind the server picks), never a video: if `import` prints that note, ask the user to convert it to mp4. A static one stays an image.
 Then `view` the result and read its `warnings`; iterate with the checklist below.
 
 ## Local only

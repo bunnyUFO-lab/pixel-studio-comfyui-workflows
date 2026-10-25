@@ -59,7 +59,7 @@ class Fake(BaseHTTPRequestHandler):
                                                                   {"name": "cloud", "label": "Cloud", "state": "asleep"}]})
         if u.path == "/api/resolve":
             p = parse_qs(u.query)["path"][0]
-            if p == "generate/characters":
+            if p == "generate/3":   # like the real store.resolve: only generate/<number>, not generate/characters
                 return self.send(200, {"subject": {"id": "subj1"}, "asset": None})
             if p == "asset9":
                 return self.send(200, {"subject": {"id": "subj1"}, "asset": {"id": "asset9", "ref": "character/1/image/1"}})
@@ -75,12 +75,16 @@ class Fake(BaseHTTPRequestHandler):
         SEEN["origins"].append(self.headers.get("Origin"))
         if u.path == "/api/subjects/subj1/import":
             SEEN["imports"].append(parse_multipart(self.headers["Content-Type"], body))
-            return self.send(200, {"id": "asset9", "kind": "image"})
+            k = SEEN["imports"][-1].get("kind", (0, b""))[1]
+            return self.send(200, {"id": "asset9", "kind": "reference" if k == b"auto" else "image"})
         if u.path == "/mcp":
             m = json.loads(body)
             name, args = m["params"]["name"], m["params"]["arguments"]
             if name == "boom":
                 res = {"content": [{"type": "text", "text": "unknown argument source"}], "isError": True}
+            elif name == "get" and args["ref"] == "generate/characters":
+                out = {"ref": "generate/3", "name": "Characters", "kind": "playground"}
+                res = {"content": [{"type": "text", "text": json.dumps(out)}], "structuredContent": out}
             elif name == "get":
                 out = {"ref": args["ref"], "files": {"sprite.png": "http://192.0.2.1:9/files/sprite.png"}}
                 res = {"content": [{"type": "text", "text": json.dumps(out)}], "structuredContent": out}
@@ -145,6 +149,13 @@ parts = SEEN["imports"][0] if SEEN["imports"] else {}
 check(rc == 0 and j == {"id": "asset9", "kind": "image", "ref": "character/1/image/1"}, "import: prints id, kind and ref")
 check(parts.get("file") == ("art.png", PNG) and parts.get("kind", (0, b""))[1] == b"image",
       "import: well-formed multipart with file (name and bytes) and kind=image by default")
+gif = os.path.join(tempfile.mkdtemp(), "anim.gif")
+with open(gif, "wb") as f:
+    f.write(b"GIF89a")
+rc, out, _ = run("import", "generate/characters", gif)
+j = json.loads(out)
+check(rc == 0 and SEEN["imports"][-1]["kind"][1] == b"auto" and j["kind"] == "reference" and "reference" in j["note"],
+      "import: .gif goes as kind=auto and the note names the kind the server chose")
 rc, out, err = run("import", "nowhere/at/all", png)
 check(rc == 1 and "404" in err, "import: an unknown subject fails with exit 1")
 
