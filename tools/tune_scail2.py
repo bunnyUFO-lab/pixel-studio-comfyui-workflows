@@ -14,6 +14,8 @@ import glob
 import json
 import os
 import subprocess
+import threading
+import time
 import sys
 
 import numpy as np
@@ -137,64 +139,167 @@ def variants(best_prompt="long", best_after_c="E"):
     }
 
 
-def run(a):
-    import bench_scail_wan as bench
+def _local_job(comfy, bench, workflow, inputs, job_sets, odir):
+    """One job on the local ComfyUI: (collect() result, seconds, base MB, peak MB, extra fields)."""
     from argparse import Namespace
     import contextlib
     import io
     import re
     import time
+    args = Namespace(workflow=workflow, input=inputs, set=job_sets, no_wait=True, dump_api=None, server=None, out=None,
+                     timeout=0)
+    base = bench.gpu_used_mb()
+    meter = bench.PeakMeter()
+    meter.start()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        comfy.cmd_run(args)
+    pid = re.search(r"queued (\S+)", buf.getvalue()).group(1)
+    while not (h := comfy.http(f"/history/{pid}").get(pid)) or not h.get("status", {}).get("status_str"):
+        time.sleep(5)
+    meter.stop.set()
+    res = comfy.collect(pid, odir)
+    st = {m[0]: m[1].get("timestamp") for m in h["status"].get("messages", [])}
+    end = st.get("execution_success") or st.get("execution_error")
+    secs = round((end - st["execution_start"]) / 1000, 1) if end else None
+    return res, secs, base, meter.peak, {"prompt_id": pid, "where": "local RTX 4090"}
+
+
+_MODAL_INFO = {}
+_API_LOCK = threading.Lock()
+
+
+def _modal_http(url, path, data=None):
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(url.rstrip("/") + path, data=json.dumps(data).encode() if data is not None else None,
+                                 method="POST" if data is not None else "GET")
+    req.add_header("Modal-Key", os.environ["MODAL_KEY"])
+    req.add_header("Modal-Secret", os.environ["MODAL_SECRET"])
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    for _ in range(20):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise SystemExit(f"Modal {path}: HTTP {e.code} {e.read()[:500]!r}")
+        except (ConnectionError, TimeoutError, OSError):
+            pass
+        time.sleep(10)
+    raise SystemExit(f"Modal {path}: no answer")
+
+
+def _modal_job(comfy, url, workflow, inputs, job_sets, odir):
+    """One job through the psc-job/v1 API: the UI workflow is converted with the deployment's object_info, inputs go
+    inline. Returns the same shape as _local_job (no local GPU numbers)."""
+    import base64
+    import contextlib
+    import io
+    from argparse import Namespace
+    if "oi" not in _MODAL_INFO:
+        _MODAL_INFO["oi"] = _modal_http(url, "/v1/info")["object_info"]
+    with _API_LOCK:                                   # cmd_run goes through module globals: one conversion at a time
+        files, seen = [], {}
+        real_http, real_upload = comfy.http, comfy.upload
+
+        def fake_http(path, data=None, method=None, raw=False):
+            if path == "/object_info":
+                return _MODAL_INFO["oi"]
+            if path == "/prompt":
+                seen["api"] = data["prompt"]
+                return {"prompt_id": "modal"}
+            return real_http(path, data, method, raw)
+
+        def fake_upload(path):
+            files.append(path)
+            return os.path.basename(path)
+        comfy.http, comfy.upload = fake_http, fake_upload
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                comfy.cmd_run(Namespace(workflow=workflow, input=inputs, set=job_sets, no_wait=True, dump_api=None,
+                                        server=None, out=None, timeout=0))
+        finally:
+            comfy.http, comfy.upload = real_http, real_upload
+    doc = {"protocol": "psc-job/v1", "workflow": seen["api"], "timeout": 3600,
+           "inputs": [{"name": os.path.basename(f), "data": base64.b64encode(open(f, "rb").read()).decode()} for f in files]}
+    jid = _modal_http(url, "/v1/jobs", doc)["id"]
+    while True:
+        time.sleep(10)
+        st = _modal_http(url, f"/v1/jobs/{jid}")
+        if st["status"] in ("done", "failed", "cancelled"):
+            break
+    if st["status"] != "done":
+        return ({"status": "error", "errors": [str(st.get("error"))], "files": [], "text": {}}, None, None, None,
+                {"modal_job": jid, "where": "Modal"})
+    r = st["result"]
+    os.makedirs(odir, exist_ok=True)
+    local = []
+    for f in r["files"]:
+        dst = os.path.join(odir, f["filename"])
+        open(dst, "wb").write(base64.b64decode(f["data"]))
+        local.append({"node": f["node"], "filename": f["filename"], "local": dst})
+    res = {"status": r["status"], "errors": r["errors"], "files": local, "text": r["text"]}
+    return res, round(r["timing"]["run"], 1), None, None, {
+        "modal_job": jid, "where": f"Modal {r['cost'].get('gpu')}", "boot": r["timing"]["boot"],
+        "usd": r["cost"].get("usd"), "worker": r.get("worker")}
+
+
+def run(a):
+    import re
+    from concurrent.futures import ThreadPoolExecutor
+    import bench_scail_wan as bench
     comfy = bench.comfy
     os.makedirs(a.out, exist_ok=True)
     path = os.path.join(a.out, "results.json")
-    results = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else []
-    done = {(r["arm"], r["sprite"], r["clip"]) for r in results if r["status"] == "success"}
+    state = {"results": json.load(open(path, encoding="utf-8")) if os.path.exists(path) else []}
+    done = {(r["arm"], r["sprite"], r["clip"]) for r in state["results"] if r["status"] == "success"}
     table = variants(a.best_prompt, a.best_after_c)
+    jobs = []
     for v in a.variants.split(","):
         workflow, clean, kind, sets, target = table[v]
         for sname in a.sprite_names.split(","):
-            meta = json.load(open(os.path.join(a.prepped, str(target), sname + ".json")))
-            bg = colour_name(meta["bg"])
+            bg = colour_name(json.load(open(os.path.join(a.prepped, str(target), sname + ".json")))["bg"])
             for cname in a.clip_names.split(","):
                 if (v, sname + ".png", cname + ".mp4") in done:
                     continue
-                clip = os.path.join(a.prepped, str(target), f"{sname}__{cname}.mp4") if clean else os.path.join(a.clips, cname + ".mp4")
+                clip = (os.path.join(a.prepped, str(target), f"{sname}__{cname}.mp4") if clean
+                        else os.path.join(a.clips, cname + ".mp4"))
                 inputs = [f"Pixel sprite={os.path.join(a.sprites, sname + '.png')}", f"Driving video={clip}"]
                 if workflow == VIEWS:
                     inputs += [f"Back view={os.path.join(a.views, sname, 'back.png')}",
                                f"Side view={os.path.join(a.views, sname, 'side.png')}"]
                 job_sets = sets + [f"Prompt.text={json.dumps(prompt(kind, sname, bg))}", f"{PREP}.target_size={target}",
                                    "Sampler (seed here).noise_seed=11", f"{bench.REPIX}.deflicker=false"]
-                args = Namespace(workflow=workflow, input=inputs, set=job_sets, no_wait=True, dump_api=None, server=None,
-                                 out=None, timeout=0)
-                base = bench.gpu_used_mb()
-                meter = bench.PeakMeter()
-                meter.start()
-                buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
-                    comfy.cmd_run(args)
-                pid = re.search(r"queued (\S+)", buf.getvalue()).group(1)
-                while not (h := comfy.http(f"/history/{pid}").get(pid)) or not h.get("status", {}).get("status_str"):
-                    time.sleep(5)
-                meter.stop.set()
-                odir = os.path.join(a.out, v)
-                res = comfy.collect(pid, odir)
-                st = {m[0]: m[1].get("timestamp") for m in h["status"].get("messages", [])}
-                end = st.get("execution_success") or st.get("execution_error")
-                pop = re.search(r"popping ([\d.]+)%", res["text"].get("Re-pixelate info (colours, popping)", ""))
-                iso = re.search(r"(\d+) isolated pixels", res["text"].get("Check report", ""))
-                r = {"arm": v, "sprite": sname + ".png", "clip": cname + ".mp4", "seed": 11, "prompt_id": pid,
-                     "status": res["status"], "errors": res["errors"], "prompt": prompt(kind, sname, bg), "sets": sets,
-                     "seconds": round((end - st["execution_start"]) / 1000, 1) if end else None,
-                     "gpu_base_mb": base, "gpu_peak_mb": meter.peak,
-                     "check_passed": res["text"].get("Check report", "").startswith("PASS"),
-                     "popping_pct": float(pop.group(1)) if pop else None, "isolated_px": int(iso.group(1)) if iso else None,
-                     "files": [os.path.join(v, os.path.relpath(f["local"], odir)) for f in res["files"] if f.get("local")],
-                     "texts": res["text"]}
-                results = [x for x in results if (x["arm"], x["sprite"], x["clip"]) != (v, r["sprite"], r["clip"])] + [r]
-                json.dump(results, open(path, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
-                print(f"{v} {sname} {cname}: {r['status']} {r['seconds']}s check {'PASS' if r['check_passed'] else 'FAIL'} "
-                      f"isolated {r['isolated_px']} popping {r['popping_pct']}", flush=True)
+                jobs.append((v, sname, cname, workflow, inputs, job_sets, prompt(kind, sname, bg), sets))
+    lock = threading.Lock()
+    print(f"{len(jobs)} jobs on {'Modal' if a.modal else 'the local ComfyUI'}", flush=True)
+
+    def one(job):
+        v, sname, cname, workflow, inputs, job_sets, text, sets = job
+        odir = os.path.join(a.out, v)
+        if a.modal:
+            res, secs, base, peak, extra = _modal_job(comfy, a.modal, workflow, inputs, job_sets, odir)
+        else:
+            res, secs, base, peak, extra = _local_job(comfy, bench, workflow, inputs, job_sets, odir)
+        pop = re.search(r"popping ([\d.]+)%", res["text"].get("Re-pixelate info (colours, popping)", ""))
+        iso = re.search(r"(\d+) isolated pixels", res["text"].get("Check report", ""))
+        r = {"arm": v, "sprite": sname + ".png", "clip": cname + ".mp4", "seed": 11, "status": res["status"],
+             "errors": res["errors"], "prompt": text, "sets": sets, "seconds": secs, "gpu_base_mb": base,
+             "gpu_peak_mb": peak, "check_passed": res["text"].get("Check report", "").startswith("PASS"),
+             "popping_pct": float(pop.group(1)) if pop else None, "isolated_px": int(iso.group(1)) if iso else None,
+             "files": [os.path.join(v, os.path.relpath(f["local"], odir)) for f in res["files"] if f.get("local")],
+             "texts": res["text"], **extra}
+        with lock:
+            state["results"] = [x for x in state["results"]
+                                if (x["arm"], x["sprite"], x["clip"]) != (v, r["sprite"], r["clip"])] + [r]
+            json.dump(state["results"], open(path, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+            print(f"{v} {sname} {cname}: {r['status']} {secs}s check {'PASS' if r['check_passed'] else 'FAIL'} "
+                  f"isolated {r['isolated_px']} popping {r['popping_pct']} ({extra['where']})", flush=True)
+
+    with ThreadPoolExecutor(a.parallel if a.modal else 1) as pool:
+        list(pool.map(one, jobs))
 
 
 def main():
@@ -218,6 +323,8 @@ def main():
     r.add_argument("--best-prompt", default="long", help="long or short: the prompt C onwards builds on")
     r.add_argument("--best-after-c", default="E", help="C, D or E: the settings F and G build on")
     r.add_argument("--out", required=True)
+    r.add_argument("--modal", default="", help="jobs URL of a psc-job/v1 deployment: run there instead of locally")
+    r.add_argument("--parallel", type=int, default=3, help="Modal jobs at once")
     a = p.parse_args()
     (prep if a.cmd == "prep" else run)(a)
 
