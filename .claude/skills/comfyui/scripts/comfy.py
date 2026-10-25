@@ -111,7 +111,7 @@ def widget_names(info):
         if typ == "COMFY_DYNAMICCOMBO_V3":
             names.append((name, "dynamic", opts))
             continue
-        if typ in WIDGET_TYPES or typ.startswith("COMBO") or isinstance(typ, list):
+        if typ in WIDGET_TYPES or typ.startswith("COMBO") or isinstance(typ, list) or opts.get("widgetType") in WIDGET_TYPES:
             names.append((name, typ, opts))
             if opts.get("control_after_generate") or (typ == "INT" and name in ("seed", "noise_seed")):
                 names.append((None, "control", {}))

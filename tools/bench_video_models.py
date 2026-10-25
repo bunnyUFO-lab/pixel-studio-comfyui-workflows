@@ -57,6 +57,10 @@ ARMS = {
                        set={"Sampler (seed, steps).steps": 20, "Sampler (seed, steps).cfg": 5.0,
                             "Sampler (seed, steps).sampler_name": "uni_pc"}),
     "vace-pose": dict(wf="sprite-from-video-vace", kind="video", fps=16),
+    "ltx25": dict(wf="sprite-from-prompt-ltx25", kind="prompt", fps=24),
+    "ltx25-enh": dict(wf="sprite-from-prompt-ltx25", kind="prompt", fps=24,
+                      modes={"Prompt enhancer": 0, "Prompt enhancer model (Gemma 4 E2B)": 0},
+                      set={"Use prompt enhancer.switch": True}),
 }
 RIFE = "rife_v4.26.safetensors"
 
@@ -106,7 +110,8 @@ def build_prompt(arm, sprite_file, motion, driver_file, prefix, seed, object_inf
     if cfg["kind"] == "video":
         api[node_by_title(api, "Driving video")[0]]["inputs"]["video"] = comfy.upload(driver_file)
     else:
-        api[node_by_title(api, "Motion prompt")[0]]["inputs"]["text"] = f"Pixel art sprite animation. {MOTIONS[motion]} {STYLE}"
+        mp = api[node_by_title(api, "Motion prompt")[0]]["inputs"]
+        mp["text" if "text" in mp else "value"] = f"Pixel art sprite animation. {MOTIONS[motion]} {STYLE}"
     for key, value in cfg.get("set", {}).items():
         title, widget = key.rsplit(".", 1)
         for i in node_by_title(api, title):
