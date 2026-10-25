@@ -6,25 +6,64 @@ downloads any models the chosen workflows still need.
 ## Windows
 
 1. Install the latest **NVIDIA driver** and **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**
-   (WSL2 backend, the default).
-2. From the repository folder:
+   (WSL2 backend, the default) and **[Python 3.9+](https://www.python.org/downloads/)** (`winget install Python.Python.3.12`).
+2. In PowerShell, from the repository folder (or from anywhere to clone it into `~\pixel-studio-comfy` first):
 
    ```powershell
-   cp env/pixel.env .env
-   docker compose up -d
-   docker compose logs -f      # wait for "To see the GUI go to"
+   powershell -ExecutionPolicy Bypass -File install.ps1
    ```
 
+   It checks Docker and the GPU, writes `.env` and `.secrets.env`, starts ComfyUI, runs `doctor`, and adds
+   `bin\` to your user PATH (open a new terminal to use `pixel-studio-comfy`). Options go after the script name,
+   for example `--preset svg`, `--models pixel-art/image-to-pixel`, `--port 8190`, `--lan`, `--yes`, `-NoPath`
+   (see [Installer options](#installer-options)).
 3. Open <http://localhost:8188>.
 
 The first run builds the image (about 10 minutes) and downloads the models, which can take a while.
 
 ## Linux or a cloud GPU
 
-Any Linux machine with an NVIDIA GPU, Docker and the
+Any Linux machine with an NVIDIA GPU, Docker, the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-works the same way: clone the repository, copy a preset to `.env` and run `docker compose up -d`. To run on
+and Python 3.9+ works the same way:
+
+```sh
+sh install.sh                     # in a checkout; or copy install.sh anywhere: it clones into ~/pixel-studio-comfy
+```
+
+It does the same as the Windows installer and installs the command as `~/.local/bin/pixel-studio-comfy`. To run on
 Modal's cloud GPUs instead, see [cloud/README.md](../cloud/README.md).
+
+## Installer options
+
+`install.sh` and `install.ps1` take `--dir PATH` (`-Dir` on Windows; default: this checkout, else `~/pixel-studio-comfy`),
+`--ref BRANCH` (clone ref, default `main`) and `--no-path` (`-NoPath`). Everything else goes to `pixel-studio-comfy setup`:
+
+| Option | Effect |
+|---|---|
+| `--preset NAME` | `pixel` (default), `svg`, `edit`, `video`, `all`, or `none` (see [Choosing workflows](#choosing-workflows)) |
+| `--models a,b,c` | workflow names to download models for; wins over `--preset` |
+| `--port N` | host port (default 8188) |
+| `--lan` | listen on the network (`BIND_ADDRESS=0.0.0.0`). New installs listen on `127.0.0.1` only; there is no authentication yet |
+| `--project-name NAME` | Compose project name, to run a second stack beside another |
+| `--output-dir PATH` | where outputs go (`COMFY_OUTPUT_DIR`) |
+| `--civitai-token`, `--hf-token` | fill an empty token in `.secrets.env` (else the `CIVITAI_TOKEN` / `HF_TOKEN` environment variables; interactive runs ask) |
+| `--no-up` | write the files, do not start or run `doctor` |
+| `-y`, `--yes` | never prompt |
+
+An existing `.env` is never edited: `setup` keeps it, says which options it ignored, and leaves a running stack running.
+
+## Manual setup
+
+Without the installer, from the repository folder:
+
+```powershell
+cp env/pixel.env .env
+docker compose up -d
+docker compose logs -f      # wait for "To see the GUI go to"
+```
+
+`bin/pixel-studio-comfy` works without installing anything (`python -m psc <command>` too).
 
 ## Choosing workflows
 
@@ -38,11 +77,13 @@ A preset picks which workflows' models are downloaded:
 | `env/video.env` | Image to video and video extension |
 | `.env.all` | Everything |
 
-Copy one to `.env` and run `docker compose up -d`. Switching presets only adds downloads.
+`pixel-studio-comfy models presets` lists them. The installer writes the chosen one to `.env`; by hand, copy one to `.env`
+and run `docker compose up -d`. Switching presets only adds downloads. `pixel-studio-comfy models pull NAME` downloads a
+preset or workflow now, without editing `.env`.
 
 ## API keys (optional)
 
-Some models are hosted on Civitai or gated on Hugging Face. Copy `.secrets.env.example` to `.secrets.env` and add
+Some models are hosted on Civitai or gated on Hugging Face. The installer creates `.secrets.env`; by hand, copy `.secrets.env.example` to it and add
 a `CIVITAI_TOKEN` and/or `HF_TOKEN` (both free). Without them those downloads are skipped and ComfyUI still starts.
 
 ## Storage
@@ -52,9 +93,9 @@ Set `COMFY_OUTPUT_DIR` and `COMFY_INPUT_DIR` in `.env` to keep inputs and output
 
 ## Everyday commands
 
-`bin/pixel-studio-comfy` (Linux, Git Bash) or `bin\pixel-studio-comfy.cmd` (Windows) wraps the Docker commands and
-needs only Python 3.9+. `python -m psc <command>` from the repository folder does the same. `down` never removes the
-model volumes.
+`bin/pixel-studio-comfy` (Linux, Git Bash) or `bin\pixel-studio-comfy.cmd` (Windows) wraps the Docker commands; once the
+installer has put it on PATH, use `pixel-studio-comfy`. `python -m psc <command>` from the repository folder does the same.
+`down` never removes the model volumes.
 
 | Task | CLI | Docker |
 |---|---|---|
@@ -63,8 +104,24 @@ model volumes.
 | Logs | `pixel-studio-comfy logs -f` | `docker compose logs -f comfyui` |
 | Container, GPU memory and queue | `pixel-studio-comfy status` | |
 | Check Python, Docker, GPU, disk and models | `pixel-studio-comfy doctor` | |
-| Check which models are downloaded | | `docker compose run --rm comfyui models` |
-| Update after pulling changes | | `docker compose up -d --build` |
+| Check which models are downloaded | `pixel-studio-comfy models list` | `docker compose run --rm comfyui models` |
+| Download models now | `pixel-studio-comfy models pull pixel` | `docker compose run --rm comfyui models download pixel-art/image-to-pixel` |
+| Update after pulling changes | `pixel-studio-comfy update` | `git pull --ff-only` then `docker compose up -d --build` |
 
-Global options go before the command: `--dir PATH` (the stack folder) and `--url URL` (ComfyUI address; default
-`http://127.0.0.1:<PORT from .env, else 8188>`).
+## CLI reference
+
+Global options go before the command: `--dir PATH` (the stack folder, env `PSC_DIR`) and `--url URL` (ComfyUI address,
+env `PSC_URL`; default `http://127.0.0.1:<PORT from .env, else 8188>`).
+
+| Command | Does |
+|---|---|
+| `setup [options]` | checks, writes `.env` and `.secrets.env` (never overwrites), `up`, `doctor` (see [Installer options](#installer-options)) |
+| `doctor` | one block of checks (Python, Docker, GPU, disk, container, API, models); exit 1 on any FAIL |
+| `status` | container, ComfyUI version, GPU memory, queue |
+| `up [--wait N]` | `docker compose up -d`, then wait for the API (default 120 s, 0 = do not wait) |
+| `down` | `docker compose down` |
+| `logs [-f] [--tail N]` | ComfyUI container log |
+| `models list [PRESET\|WORKFLOW ...]` | required models and whether they are present (default: the `.env` preset) |
+| `models pull PRESET\|WORKFLOW ...` | download missing models (`models get` is the same); does not edit `.env` |
+| `models presets` | the preset table |
+| `update [--no-up]` | `git pull --ff-only` (refuses on local changes or without an upstream), then `up` |
