@@ -52,9 +52,19 @@ Set `COMFY_OUTPUT_DIR` and `COMFY_INPUT_DIR` in `.env` to keep inputs and output
 
 ## Everyday commands
 
-| Task | Command |
-|---|---|
-| Stop / start | `docker compose stop` / `docker compose up -d` |
-| Logs | `docker compose logs -f comfyui` |
-| Check which models are downloaded | `docker compose run --rm comfyui models` |
-| Update after pulling changes | `docker compose up -d --build` |
+`bin/pixel-studio-comfy` (Linux, Git Bash) or `bin\pixel-studio-comfy.cmd` (Windows) wraps the Docker commands and
+needs only Python 3.9+. `python -m psc <command>` from the repository folder does the same. `down` never removes the
+model volumes.
+
+| Task | CLI | Docker |
+|---|---|---|
+| Start and wait for ComfyUI | `pixel-studio-comfy up` | `docker compose up -d` |
+| Stop | `pixel-studio-comfy down` | `docker compose down` |
+| Logs | `pixel-studio-comfy logs -f` | `docker compose logs -f comfyui` |
+| Container, GPU memory and queue | `pixel-studio-comfy status` | |
+| Check Python, Docker, GPU, disk and models | `pixel-studio-comfy doctor` | |
+| Check which models are downloaded | | `docker compose run --rm comfyui models` |
+| Update after pulling changes | | `docker compose up -d --build` |
+
+Global options go before the command: `--dir PATH` (the stack folder) and `--url URL` (ComfyUI address; default
+`http://127.0.0.1:<PORT from .env, else 8188>`).

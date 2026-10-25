@@ -1,0 +1,11 @@
+#!/bin/sh
+# pixel-studio-comfy: runs the CLI of the repository this script lives in with the first working Python 3.9+.
+repo=$(cd "$(dirname "$0")/.." && pwd)
+for cand in python3 python "py -3"; do
+    # Unquoted on purpose: "py -3" is two words. The Windows Store python3 alias exists but fails this test.
+    if $cand -c "import sys; sys.exit(sys.version_info < (3, 9))" >/dev/null 2>&1; then
+        PYTHONPATH="$repo${PYTHONPATH:+:$PYTHONPATH}" exec $cand -m psc "$@"
+    fi
+done
+echo "error: Python 3.9 or newer was not found (tried python3, python, py -3)." >&2
+exit 1

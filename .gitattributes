@@ -1,3 +1,5 @@
 # Everything here is read inside Linux containers: keep LF even on Windows checkouts
 # (overrides core.autocrlf=true, which would otherwise turn text files into CRLF).
 * text=auto eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
