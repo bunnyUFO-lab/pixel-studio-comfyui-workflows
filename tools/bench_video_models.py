@@ -39,6 +39,27 @@ MOTIONS = {
     "spell": "The character casts a spell: it raises its arms, glowing magic energy and sparkling particles gather "
              "and burst outward in a bright flash, then it returns to its stance.",
 }
+# LTX-2 prompting guide (Lightricks): one flowing present-tense paragraph, the action first, then the movements in
+# order, the character's look, the setting and the camera, under 200 words. {char} is the sprite's caption
+# (DIR/<name>.txt next to the sprite), which a text-only arm needs and an image arm uses to hold the character.
+LTX_LOOK = ("Its face, outfit and proportions stay exactly the same, it keeps facing the same way and stays in the "
+            "centre of the frame. The camera is locked off and static, with flat even lighting, crisp pixel edges and a "
+            "limited colour palette, like a classic 16-bit video game sprite animation.")
+LTX_MOTIONS = {
+    "idle": "A 2D pixel art game sprite of {char}, full body in three-quarter view on a flat solid background. The "
+            "character stands in a relaxed looping idle: its chest rises and falls with slow breaths, its body bobs "
+            "gently up and down, and loose cloth and hair sway a little, returning to the starting pose. ",
+    "walk": "A 2D pixel art game sprite of {char}, full body in three-quarter view on a flat solid background. The "
+            "character walks in place in a smooth looping walk cycle: one leg steps forward while the opposite arm "
+            "swings forward, then the other leg steps forward while the other arm swings, the body rising and falling "
+            "slightly with each step. It does not move across the frame. ",
+    "attack": "A 2D pixel art game sprite of {char}, full body in three-quarter view on a flat solid background. The "
+              "character draws its weapon back over its shoulder, swings it forward in one fast, powerful strike, "
+              "then pulls it back and settles into its starting stance. ",
+    "spell": "A 2D pixel art game sprite of {char}, full body in three-quarter view on a flat solid background. The "
+             "character raises both arms, a small ball of glowing magic gathers between its hands and bursts outward "
+             "into sparks that fade quickly, then it lowers its arms back to its starting stance. ",
+}
 # arm -> workflow, input kind, model fps, UI node mode changes {title: mode}, API overrides {title.input: value}
 ARMS = {
     "remix": dict(wf="sprite-from-prompt", kind="prompt", fps=16),
@@ -61,6 +82,9 @@ ARMS = {
     "ltx25-enh": dict(wf="sprite-from-prompt-ltx25", kind="prompt", fps=24,
                       modes={"Prompt enhancer": 0, "Prompt enhancer model (Gemma 4 E2B)": 0},
                       set={"Use prompt enhancer.switch": True}),
+    "ltx25-tp": dict(wf="sprite-from-prompt-ltx25", kind="prompt", fps=24, prompt="ltx"),
+    # text only: the sprite is not a guide frame, it only sets the grid, palette and canvas for Re-pixelate
+    "ltx25-t2v": dict(wf="sprite-from-prompt-ltx25", kind="prompt", fps=24, prompt="ltx", no_guides=True),
 }
 RIFE = "rife_v4.26.safetensors"
 
@@ -99,6 +123,24 @@ def node_by_title(api, title):
     return ids
 
 
+def drop_guides(api):
+    """Remove LTXVAddGuide / LTXVCropGuides, wiring their (positive, negative, latent) inputs straight through."""
+    for nid in [k for k, v in api.items() if v["class_type"] in ("LTXVAddGuide", "LTXVCropGuides")]:
+        ins = api.pop(nid)["inputs"]
+        through = [ins["positive"], ins["negative"], ins["latent"]]
+        for v in api.values():
+            for k, x in v["inputs"].items():
+                if isinstance(x, list) and len(x) == 2 and x[0] == nid:
+                    v["inputs"][k] = through[x[1]]
+
+
+def caption(sprite_file):
+    path = os.path.splitext(sprite_file)[0] + ".txt"
+    if not os.path.exists(path):
+        raise SystemExit(f"no caption {path} (needed by the LTX-prompt arms)")
+    return open(path, encoding="utf-8").read().strip()
+
+
 def build_prompt(arm, sprite_file, motion, driver_file, prefix, seed, object_info):
     cfg = ARMS[arm]
     wf = comfy.load_workflow(os.path.join(WF, cfg["wf"] + ".json"))
@@ -111,7 +153,12 @@ def build_prompt(arm, sprite_file, motion, driver_file, prefix, seed, object_inf
         api[node_by_title(api, "Driving video")[0]]["inputs"]["video"] = comfy.upload(driver_file)
     else:
         mp = api[node_by_title(api, "Motion prompt")[0]]["inputs"]
-        mp["text" if "text" in mp else "value"] = f"Pixel art sprite animation. {MOTIONS[motion]} {STYLE}"
+        text = f"Pixel art sprite animation. {MOTIONS[motion]} {STYLE}"
+        if cfg.get("prompt") == "ltx":
+            text = LTX_MOTIONS[motion].format(char=caption(sprite_file)) + LTX_LOOK
+        mp["text" if "text" in mp else "value"] = text
+    if cfg.get("no_guides"):
+        drop_guides(api)
     for key, value in cfg.get("set", {}).items():
         title, widget = key.rsplit(".", 1)
         for i in node_by_title(api, title):
