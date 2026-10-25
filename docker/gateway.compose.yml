@@ -1,0 +1,29 @@
+# Opt-in Bearer-token gateway in front of ComfyUI. Use it by adding this file to every compose call:
+#   docker compose -f docker-compose.yml -f docker/gateway.compose.yml up -d
+# (pixel-studio-comfy does that when .env has PSC_GATEWAY=1; setup --gateway writes it and creates PSC_TOKEN.)
+# ComfyUI then publishes no port; the gateway publishes PORT and passes only the paths Pixel Studio uses.
+# Needs Docker Compose 2.24 or newer for !reset.
+services:
+  comfyui:
+    ports: !reset []
+
+  gateway:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      - comfyui
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-8188}:8080"
+    env_file:                    # PSC_TOKEN (and, harmlessly, the download tokens) come from here
+      - path: .secrets.env
+        required: true
+    # An empty PSC_TOKEN would make the header matcher accept "Bearer " alone, and a "*", space, quote or brace changes what
+    # Caddy matches: refuse to start instead.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$$PSC_TOKEN" ]; then echo "PSC_TOKEN is empty in .secrets.env: run pixel-studio-comfy token show" >&2; exit 1; fi
+        case "$$PSC_TOKEN" in *[!A-Za-z0-9_-]*) echo "PSC_TOKEN may only contain A-Z a-z 0-9 _ -: run pixel-studio-comfy token rotate" >&2; exit 1;; esac
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
