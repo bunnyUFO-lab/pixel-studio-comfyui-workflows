@@ -9,3 +9,6 @@ __pycache__/
 # local dev-server configs (machine-specific paths)
 .claude/launch.json
 
+
+# Modal deployment settings (copy cloud/modal.env.example)
+cloud/modal.env
