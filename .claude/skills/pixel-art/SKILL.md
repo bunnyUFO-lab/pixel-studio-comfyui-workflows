@@ -40,7 +40,7 @@ Rules:
   and cost guidance for choosing; don't copy it here. If the tool answers "unknown argument source", the app predates
   it: run again without `source` and say "routing followed the app's Run on".
 - **Subject kind:** if a subject was made with the wrong kind (an object that should be a character), the kind can only
-  be changed through the API: `PATCH /api/subjects/{id}` with `{"kind":"character"}`. The UI's Kind switch only goes
+  be changed through the API: `PATCH /api/subjects/{id}` with `{"kind":"character"}` (`{id}` is the `id` from `GET /api/subjects`). The UI's Kind switch only goes
   between character and creature.
 
 ## Mapping: goal to Pixel Studio
