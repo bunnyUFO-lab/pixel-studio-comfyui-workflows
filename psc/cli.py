@@ -13,10 +13,10 @@ import os
 import sys
 from pathlib import Path
 
-from psc import __version__, local, models_cmd, setup, update_cmd
+from psc import __version__, local, models_cmd, setup, token_cmd, update_cmd
 from psc.stack import CliError, Stack
 
-COMMAND_MODULES = [local, models_cmd, setup, update_cmd]
+COMMAND_MODULES = [local, models_cmd, setup, update_cmd, token_cmd]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

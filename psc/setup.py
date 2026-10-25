@@ -1,10 +1,11 @@
 """setup: check the machine, choose models, write .env and .secrets.env (never overwriting), start, run doctor."""
 import getpass
+import json
 import os
 import sys
 import types
 
-from psc import core, local
+from psc import core, local, token_cmd
 from psc.presets import SECRET_KEYS, fill_secrets, list_presets, render_env, workflow_names
 from psc.stack import CliError
 
@@ -71,7 +72,8 @@ def preset_text(stack, name):
 def step_env(args, stack, interactive, host):
     existing = stack.read_text(".env")
     flags = [f for f, v in (("--port", args.port), ("--lan", args.lan), ("--project-name", args.project_name),
-                            ("--output-dir", args.output_dir), ("--models", args.models), ("--preset", args.preset)) if v]
+                            ("--output-dir", args.output_dir), ("--models", args.models), ("--preset", args.preset),
+                            ("--gateway", args.gateway)) if v]
     if existing is not None:
         models = core.parse_env(existing).get("MODELS", "")
         say("keeping existing .env (MODELS=%s)" % (models or "(empty)"))
@@ -90,6 +92,11 @@ def step_env(args, stack, interactive, host):
         overrides["COMFY_OUTPUT_DIR"] = args.output_dir
     if models is not None:
         overrides["MODELS"] = models
+    if args.gateway:
+        overrides["PSC_GATEWAY"] = "1"
+        # so plain `docker compose` picks up the override too; one value that works on Windows and Linux
+        overrides["COMPOSE_FILE"] = "docker-compose.yml;docker/gateway.compose.yml"
+        overrides["COMPOSE_PATH_SEPARATOR"] = ";"
     stack.write_text(".env", render_env(text, overrides))
     say("wrote .env (preset: %s)" % label)
     if args.lan:
@@ -136,6 +143,10 @@ def cmd_setup(args, stack):
     host = step_checks(stack)
     step_env(args, stack, interactive, host)
     step_secrets(args, stack, interactive)
+    if args.gateway and stack.gateway:
+        token = token_cmd.ensure_token(stack)
+        say("gateway on: every request needs the Bearer token (pixel-studio-comfy token show). Pixel Studio source:")
+        say(json.dumps([{"name": "pc", "url": stack.url, "headers": {"Authorization": "Bearer " + token}}]))
     code = 0
     if not args.no_up:
         code = local.cmd_up(types.SimpleNamespace(wait=600), stack)
@@ -160,6 +171,8 @@ def register(sub):
     p.add_argument("--lan", action="store_true", help="listen on the network, not only this PC (BIND_ADDRESS=0.0.0.0)")
     p.add_argument("--project-name", metavar="NAME", help="Compose project name (COMPOSE_PROJECT_NAME)")
     p.add_argument("--output-dir", metavar="PATH", help="where outputs go (COMFY_OUTPUT_DIR)")
+    p.add_argument("--gateway", action="store_true",
+                   help="put the Bearer-token gateway in front of ComfyUI (new .env only; creates PSC_TOKEN)")
     p.add_argument("--civitai-token", metavar="TOKEN", help="fills an empty CIVITAI_TOKEN (else the environment variable)")
     p.add_argument("--hf-token", metavar="TOKEN", help="fills an empty HF_TOKEN (else the environment variable)")
     p.add_argument("--no-up", action="store_true", help="write the files, do not start the stack or run doctor")

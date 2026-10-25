@@ -58,6 +58,28 @@ def compose_default(text, var, fallback=None):
     return m.group(1) if m else fallback
 
 
+def gateway_enabled(env):
+    """PSC_GATEWAY=1 in .env turns on the Bearer-token gateway."""
+    return (env.get("PSC_GATEWAY") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def compose_files(env):
+    """The -f files for every compose call: none normally, the gateway override when the gateway is on."""
+    return ["docker-compose.yml", "docker/gateway.compose.yml"] if gateway_enabled(env) else []
+
+
+TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,}")
+
+
+def valid_token(token):
+    """A gateway token Caddy can match literally: 32+ of A-Za-z0-9_- (no wildcard, space, quote or brace)."""
+    return bool(TOKEN_RE.fullmatch(token or ""))
+
+
+def bearer_headers(token):
+    return {"Authorization": "Bearer " + token} if token else {}
+
+
 def summarize_queue(data):
     """From a /queue payload: counts and the first 5 shortened prompt ids of each list."""
     def ids(items):
