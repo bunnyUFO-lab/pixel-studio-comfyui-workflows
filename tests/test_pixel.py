@@ -103,6 +103,9 @@ f_, (ox_, oy_), (w_, h_) = spec["factor"], spec["offset"], spec["size"]
 want = np.zeros((H, W), bool)
 want[oy_ * f_:(oy_ + h_) * f_, ox_ * f_:(ox_ + w_) * f_] = np.kron(sprite[sy0:sy1, sx0:sx1, 3] > 0, np.ones((f_, f_), bool))
 check(vmask.shape == (1, H, W) and np.array_equal(vmask[0].numpy() > 0.5, want), "SpriteVideoMask = the upscaled sprite's alpha")
+(views,) = pixel.MatchSpriteCanvas().run(tensor([up7]), spec)              # the sprite itself as an "extra view"
+check(views.shape == img.shape and np.array_equal((views[0].numpy() * 255).round(), (img[0].numpy() * 255).round()),
+      "MatchSpriteCanvas puts a view on the prepared canvas exactly where the sprite is")
 big = (img[0].numpy() * 255).round().astype(np.uint8)
 frames = [degrade(big, seed=i) for i in range(3)]
 out = pixel.repixelate(frames, spec)

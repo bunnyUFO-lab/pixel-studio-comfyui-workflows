@@ -959,6 +959,42 @@ class PrepareSpriteForVideo:
         return (img, spec, cw * f, ch * f, info)
 
 
+class MatchSpriteCanvas:
+    """Extra views of a sprite (back, side) on the canvas PrepareSpriteForVideo made for it: same integer factor, same
+    background, centred, feet on the sprite's foot line. For video models that take several reference views (SCAIL 2)."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"views": ("IMAGE",), "pixel_spec": ("PIXEL_SPEC",)}}
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "run"
+    CATEGORY = "comfyui_workflows/pixel"
+    DESCRIPTION = "Place extra views of a sprite on its prepared video canvas (same scale, background and foot line)."
+
+    def run(self, views, pixel_spec):
+        f, (cw, ch) = pixel_spec["factor"], pixel_spec["canvas"]
+        foot = pixel_spec["offset"][1] + pixel_spec["size"][1]
+        bg = np.array(pixel_spec["bg"], np.uint8)
+        out = []
+        for rgba in to_rgba_np(views):
+            native, _ = recover_native(rgba)
+            x0, y0, x1, y1 = subject_bbox(native[..., 3] > 0)
+            v = native[y0:y1, x0:x1]
+            h, w = v.shape[:2]
+            canvas = np.zeros((ch, cw, 4), np.uint8)
+            canvas[..., :3], canvas[..., 3] = bg, 255
+            ox, oy = (cw - w) // 2, foot - h
+            sx0, sy0 = max(0, -ox), max(0, -oy)                  # clip a view larger than the canvas
+            dx0, dy0 = max(0, ox), max(0, oy)
+            vw, vh = min(w - sx0, cw - dx0), min(h - sy0, ch - dy0)
+            m = v[sy0:sy0 + vh, sx0:sx0 + vw, 3] > 0
+            canvas[dy0:dy0 + vh, dx0:dx0 + vw][m] = v[sy0:sy0 + vh, sx0:sx0 + vw][m]
+            out.append(nearest_upscale(canvas, f)[..., :3])
+        return (torch.from_numpy(np.stack(out).astype(np.float32) / 255.0),)
+
+
 class SpriteVideoMask:
     """The sprite's own silhouette on the prepared canvas, for video models that want a subject mask of the reference
     (SCAIL 2): every pixel that is not the flat background PrepareSpriteForVideo painted."""

@@ -66,7 +66,7 @@ class SVGStats:
 from .edit import CropForMaskedEdit, MaskedEditComposite  # noqa: E402
 from .layered import LayeredVectorize  # noqa: E402
 from .pixel import (CleanCutout, ClearSky, CropToStrip, GridCutout, MakeTileable, PixelArtCheck, Pixelize, RestoreSpriteCanvas, PrepareSpriteForVideo, RepixelateFrames, SaveDirections,  # noqa: E402
-                    SaveSpriteSheet, SpriteAnimationPreview, SpriteVideoMask)
+                    SaveSpriteSheet, SpriteAnimationPreview, SpriteVideoMask, MatchSpriteCanvas)
 from .prompts import PixelArtPrompt, SceneryPrompt, VectorArtPrompt  # noqa: E402
 from .video import JoinVideoSegments, ResizeForWan, SegmentPrompt, VideoAnchorAndTail, WanSVIProConditioning  # noqa: E402
 
@@ -89,6 +89,7 @@ NODE_CLASS_MAPPINGS = {
     "ClearSky": ClearSky,
     "PrepareSpriteForVideo": PrepareSpriteForVideo,
     "SpriteVideoMask": SpriteVideoMask,
+    "MatchSpriteCanvas": MatchSpriteCanvas,
     "RepixelateFrames": RepixelateFrames,
     "SaveSpriteSheet": SaveSpriteSheet,
     "SpriteAnimationPreview": SpriteAnimationPreview,
@@ -117,6 +118,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ClearSky": "Clear Sky (transparent down to the skyline)",
     "PrepareSpriteForVideo": "Prepare Pixel Sprite for Video",
     "SpriteVideoMask": "Sprite Video Mask (sprite silhouette)",
+    "MatchSpriteCanvas": "Match Sprite Canvas (extra views for video)",
     "RepixelateFrames": "Re-pixelate Frames (same grid + palette)",
     "SaveSpriteSheet": "Save Sprite Sheet (PNG + Aseprite JSON)",
     "SpriteAnimationPreview": "Sprite Animation Preview (playback)",
