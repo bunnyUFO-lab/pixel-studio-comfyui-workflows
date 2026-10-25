@@ -116,12 +116,21 @@ def cmd_call(args):
 
 def cmd_import(args):
     base = base_url(args)
-    sub = get_json(base + "/api/resolve?path=" + urllib.parse.quote(args.subject, safe="/"))["subject"]["id"]
+    path = args.subject.strip("/")
+    parts = path.split("/")
+    if parts[0] == "generate" and (len(parts) == 1 or not parts[1].isdigit()):
+        # REST resolve only knows generate/<number>; the MCP resolves the named sections (generate/characters)
+        out, _ = rpc_call(base, "get", {"ref": path})
+        path = (out or {}).get("ref") or path
+    sub = get_json(base + "/api/resolve?path=" + urllib.parse.quote(path, safe="/"))["subject"]["id"]
     with open(args.file, "rb") as f:
         data = f.read()
     name = os.path.basename(args.file)
     ct = mimetypes.guess_type(name)[0] or "application/octet-stream"
-    body, ctype = multipart({"kind": args.kind}, {"file": (name, data, ct)})
+    is_anim = name.lower().endswith((".gif", ".webp"))
+    # the server only sniffs for animation with kind=auto; with image it keeps the first frame
+    kind = "auto" if is_anim and args.kind == "image" else args.kind
+    body, ctype = multipart({"kind": kind}, {"file": (name, data, ct)})
     code, resp = http("%s/api/subjects/%s/import" % (base, sub), body, {"Content-Type": ctype})
     if code >= 400:
         raise Failed("import failed (HTTP %s): %s" % (code, resp[:300].decode("utf-8", "replace")))
@@ -132,8 +141,8 @@ def cmd_import(args):
     except Failed:
         pass
     out = {"id": asset["id"], "kind": asset.get("kind"), "ref": ref}
-    if name.lower().endswith((".gif", ".webp")) and asset.get("kind") != "video":
-        out["note"] = "an animated picture lands as a reference, not a video: convert a motion clip to mp4 and import that"
+    if is_anim and asset.get("kind") not in ("image", "sprite", "sheet", "video"):
+        out["note"] = "an animated picture imports as a %s, not a video: convert a motion clip to mp4 and import that" % asset.get("kind")
     print(json.dumps(out))
     return 0
 
