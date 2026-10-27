@@ -1,0 +1,9 @@
+# Allowlist: the build context is the repo root, and input/, output/, train/ and .git must never enter it.
+*
+!cloud/job_runner.py
+!cloud/runpod/**
+!custom_nodes/comfyui_workflows_utils/**
+!workflows/**
+!env/pixel.env
+!docker/models.py
+**/__pycache__
