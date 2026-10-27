@@ -21,6 +21,18 @@ downloads any models the chosen workflows still need.
 
 The first run builds the image (about 10 minutes) and downloads the models, which can take a while.
 
+On a PC with less RAM than ComfyUI's VM limit plus everything else you run, a big model load (Wan 2.x) fills
+Docker's WSL VM with file cache, Windows runs out of memory and the job hangs at "Model Initializing". The optional
+memory watchdog drops that cache whenever Windows falls below 4 GB free (a scheduled task, no window, never stops
+ComfyUI or Docker):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\windows-memory-watchdog\install.ps1     # uninstall.ps1 removes it
+```
+
+It logs each drop to `%LOCALAPPDATA%\memory-watchdog\watchdog.log`; `config.json` there (`free_below_gb`,
+`min_cache_gb`) changes the thresholds.
+
 ## Linux or a cloud GPU
 
 Any Linux machine with an NVIDIA GPU, Docker, the
