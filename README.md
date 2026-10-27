@@ -16,7 +16,9 @@ these workflows and connect Pixel Studio to them.
 | [`pixel-art/prompt-to-pixel`](workflows/pixel-art/prompt-to-pixel.json) | Makes a pixel-art sprite from a text prompt. |
 | [`pixel-art/prompt-to-pixel-krea2`](workflows/pixel-art/prompt-to-pixel-krea2.json) | The same with the Krea 2 model (experimental). |
 | [`pixel-art/image-to-directions`](workflows/pixel-art/image-to-directions.json) | Turns one character image into an 8-direction sprite set. |
+| [`pixel-art/image-to-directions-2511`](workflows/pixel-art/image-to-directions-2511.json) | The same with Qwen-Image-Edit-2511 at 4 steps (Apache 2.0); won the blind picks for directions. Needs ComfyUI 0.41. |
 | [`pixel-art/sprite-edit`](workflows/pixel-art/sprite-edit.json) | Edits a sprite (or animation frames) from a prompt, keeping its size, grid and palette. `sprite-edit-ref` / `sprite-edit-refs` also take reference images. |
+| [`pixel-art/sprite-edit-2511`](workflows/pixel-art/sprite-edit-2511.json) | `sprite-edit` with Qwen-Image-Edit-2511 at 4 steps (Apache 2.0); won the blind picks for recolours and directions. Needs ComfyUI 0.41. |
 | [`pixel-art/sprite-from-prompt`](workflows/pixel-art/sprite-from-prompt.json) | Animates a sprite from a motion prompt into a looping sprite sheet. |
 | [`pixel-art/sprite-from-prompt-ltx25`](workflows/pixel-art/sprite-from-prompt-ltx25.json) | Animates a sprite from a motion prompt with LTX-2.5 (about twice as fast as Wan 2.2 Remix, simpler game-like motion); first = last frame, so it loops. Needs ComfyUI 0.41. |
 | [`pixel-art/sprite-from-video`](workflows/pixel-art/sprite-from-video.json) | Animates a sprite by copying the motion of a video. |
