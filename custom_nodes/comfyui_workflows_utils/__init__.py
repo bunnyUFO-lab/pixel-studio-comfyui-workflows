@@ -126,3 +126,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 }
 
 from . import cleanup  # noqa: E402,F401  - registers POST /spritestudio/forget (Sprite Studio's job cleanup)
+from . import memory  # noqa: E402,F401  - registers GET /spritestudio/loaded_models (the memory watchdog's VRAM view)
