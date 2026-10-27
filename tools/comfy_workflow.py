@@ -40,6 +40,43 @@ QWEN_MODEL = "qwen_image_2.1_int8_convrot.safetensors"
 QWEN_TE = "qwen3vl_8b_int8_convrot.safetensors"
 QWEN_VAE = "qwen_image_2.1_vae_bf16.safetensors"
 
+# Background removal (core LoadBackgroundRemovalModel), MIT
+BIREFNET = "birefnet.safetensors"
+BIREFNET_URL = "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors"
+
+# Z-Image Turbo (Tongyi-MAI, Apache-2.0) text-to-image, Comfy-Org repack
+ZIMAGE_HF = "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files"
+# 8-bit builds (int8 model 5.8 GB, fp8 text encoder 5.3 GB) instead of bf16 (11.5 + 7.5 GB): on the RTX 4090 the
+# sprite workflow peaks at 14.5 GB instead of 21.8 GB, loads ~40% faster and makes the same images, so a local
+# LLM fits beside it. Measured 2026-10-05 (game-dev workspace card "ComfyUI Pixel-Art Efficiency").
+ZIMAGE_MODEL = "z_image_turbo_int8_convrot.safetensors"
+ZIMAGE_TE = "qwen_3_4b_fp8_mixed.safetensors"
+ZIMAGE_VAE = "ae.safetensors"
+# Pixel-art style LoRA for Z-Image Turbo (tarn59, Apache-2.0), trigger "Pixel art style."
+PIXEL_LORA = "pixel_art_style_z_image_turbo.safetensors"
+PIXEL_LORA_URL = "https://huggingface.co/tarn59/pixel_art_style_lora_z_image_turbo/resolve/main/" + PIXEL_LORA
+
+# Krea 2 Turbo (Krea, Krea 2 Community Licence: free commercial use under ~$1M revenue / 50 seats, deployers must
+# filter content) text-to-image, Comfy-Org repack. 12.9B, 8 steps, no CFG, 1K-2K. Text only: no edit mode.
+KREA2_HF = "https://huggingface.co/Comfy-Org/Krea-2/resolve/main"
+KREA2_MODEL = "krea2_turbo_int8_convrot.safetensors"     # 13.5 GB
+KREA2_TE = "qwen3vl_4b_int8_convrot.safetensors"          # 4.9 GB
+KREA2_VAE = "qwen_image_vae.safetensors"                  # 0.25 GB
+# Pixel-art LoRAs for Krea 2 (e-n-v-y, MIT), one per logical grid across a 1024 px image. Trigger "pixel art"
+# (the author: k2-pixel64 works best without it).
+K2_PIXEL_HF = "https://huggingface.co/e-n-v-y/Krea-2-Pixel-Art/resolve/main"
+K2_PIXEL_LORAS = {32: "k2-pixel32.safetensors", 64: "k2-pixel64.safetensors", 128: "k2-pixel128.safetensors"}
+
+# Pixel-art sprite animation LoRA for Wan 2.2 I2V (styly-agents, Apache-2.0); same file on HIGH and LOW
+PIXEL_ANIM_LORA = "wan2.2_animate_adapter_model.safetensors"
+PIXEL_ANIM_LORA_URL = "https://huggingface.co/styly-agents/Wan2-2-pixel-animate/resolve/main/" + PIXEL_ANIM_LORA
+
+# Wan Animate 2 (Wan-Video, Apache-2.0) motion transfer, Comfy-Org repack
+ANIMATE_HF = "https://huggingface.co/Comfy-Org/Wan-Animate-2/resolve/main"
+ANIMATE_MODEL = "wan_animate_2_int8_convrot.safetensors"
+ANIMATE_LORA = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
+CLIP_VISION_H = "clip_vision_h.safetensors"
+
 # Fast local video models for sprites (tools/build_pixel_sprite_fast.py). Base models Apache-2.0, Comfy-Org repacks.
 WAN21_HF = f"{HF}/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files"
 WAN22_HF = f"{HF}/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files"
