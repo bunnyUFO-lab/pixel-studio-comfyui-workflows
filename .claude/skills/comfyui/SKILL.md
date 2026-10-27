@@ -11,6 +11,12 @@ ComfyUI runs in Docker from this repo (`docker compose up -d`). Its workflow lib
 `workflows/` folder, and the repo's own nodes live in `custom_nodes/comfyui_workflows_utils/`.
 Everything below goes through `scripts/comfy.py` (Python stdlib only), run from the repo root.
 
+Setup and upkeep use the `pixel-studio-comfy` CLI (`bin/`, installed by `install.ps1` / `install.sh`;
+[docs/setup.md](../../../docs/setup.md)): `doctor`, `up`, `down`, `status`, `models`, `logs`, `update`, `token`.
+For a cloud GPU, `pixel-studio-comfy cloud modal deploy|snippet` deploys the Modal job API and prints the Pixel Studio
+`comfy-job` source (the live app needs `--live`; see `cloud/README.md` and `docs/job-api.md`). This skill talks to
+the local server only.
+
 ## Before running anything
 - `python .claude/skills/comfyui/scripts/comfy.py status` checks the server, GPU, free VRAM and queue.
 - **Don't start jobs or restart ComfyUI while the user has a job running** (queue shows running/pending).

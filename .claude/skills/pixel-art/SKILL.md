@@ -35,8 +35,13 @@ Rules:
 - **Local only only for a gap** in the table below, and say "local only: <gap>" in the reply. A job that **failed** in
   Pixel Studio is not a reason to fall back: report the failure.
 - **`source`:** pass it only when the user names one (`auto`, or a name from `list_sources`, usually `pc` or `cloud`).
-  The `pixel-studio` skill has the batch and cost guidance for choosing; don't copy it here. If the tool answers
-  "unknown argument source", the app predates it: run again without `source` and say "routing followed the app's Run on".
+  Call `list_sources` first (names are configurable; `state` and `queued` per source). A batch of about 4 or more jobs
+  is the case for `cloud`: the cloud source runs several at once, the PC one at a time. The `pixel-studio` skill has the batch
+  and cost guidance for choosing; don't copy it here. If the tool answers "unknown argument source", the app predates
+  it: run again without `source` and say "routing followed the app's Run on".
+- **Subject kind:** if a subject was made with the wrong kind (an object that should be a character), the kind can only
+  be changed through the API: `PATCH /api/subjects/{id}` with `{"kind":"character"}` (`{id}` is the `id` from `GET /api/subjects`). The UI's Kind switch only goes
+  between character and creature.
 
 ## Mapping: goal to Pixel Studio
 
