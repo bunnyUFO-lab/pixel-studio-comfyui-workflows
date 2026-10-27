@@ -50,7 +50,7 @@ Rules:
 | Prompt to pixel art | `generate_sprite(target, prompt, pixels, view, style, palette, variants, references, canvas_w/h)`; the target is `generate/characters` or `generate/objects`. Styles come from `list_styles`, not the node's list. | a fixed seed; the raw non-pixel image; `Pixel Art Prompt` `detail` / `outline` / `background` -> `pixel-art/prompt-to-pixel` |
 | Image to pixel art | `python $P import <subject> art.png --kind image`, then `make_sprite(image, pixels, palette, remove_background)` | the Pixelize settings (`method`, `smooth`, `colors`/`color_error`, `outline`, `cleanup`, `edge_cleanup`, `padding`), Clean cutout `drop_shadow` / `enclosed_background`, and **recovering existing or upscaled pixel art** (`measure=auto (detect grid)`) -> `pixel-art/image-to-pixel` |
 | 8 directions | `make_directions(sprite, mirror)`. Its input must be a **sprite**: import raw art, run `make_sprite`, then `make_directions`. To fix one view use `edit` on the directions set. | per-view prompt lines (`View prompts`), `num_iterations` -> `pixel-art/image-to-directions` |
-| Sheet from a motion prompt | `animate(asset, motion, name, frames, fps, loop, speed)`; the asset is a sprite or directions set | Repixelate settings (`colors`, `palette`, `stability`, `deflicker`, `cleanup`), `Loop ... length`, `padding`, seeds -> `pixel-art/sprite-from-prompt` |
+| Sheet from a motion prompt | `animate(asset, motion, name, frames, fps, loop, speed, engine)`; the asset is a sprite or directions set. `engine=ltx` (LTX-2.5, the default: simpler, game-like motion, about 2× faster) or `engine=wan` (Wan 2.2 Remix: more fluid, realistic motion). `weapon_trail=true` always uses Wan. | Repixelate settings (`colors`, `palette`, `stability`, `deflicker`, `cleanup`), `Loop ... length`, `padding`, seeds -> `pixel-art/sprite-from-prompt-ltx25` (LTX) or `pixel-art/sprite-from-prompt` (Wan) |
 | Sheet from a driving video | `python $P import <subject> clip.mp4`, then `animate(asset, motion_reference=<video id>, mirror_motion, extra_prompt)`. For a web link use `add_reference(url, type="motion")` instead of importing. | trimming (`frame_load_cap`, `skip_first_frames`) and `height_match`; trim with ffmpeg first, or use the local path -> `pixel-art/sprite-from-video` |
 | Outputs to a folder | `get(ref)` lists `files`; `python $P download <ref> --out DIR` | `comfy.py run --out DIR` |
 | Quality check | the result's `warnings`, `view`, `read_pixels` | the full Pixel Art Check PASS/FAIL report |
@@ -62,7 +62,7 @@ python $P call make_sprite --arg image=<ref> --arg pixels=48 --arg palette=Endes
 python $P call generate_sprite --arg target=generate/objects --arg 'prompt=a red potion bottle' --arg pixels=24
 python $P call make_directions --arg sprite=<sprite ref> --arg mirror=true
 python $P call animate --arg asset=<sprite ref> --arg 'motion=the character walks in place, legs and arms swinging' \
-    --arg name=walk --arg frames=16 --arg loop=true
+    --arg name=walk --arg frames=16 --arg loop=true       # add --arg engine=wan for Wan 2.2 Remix
 python $P import character/12 clip/attack.mp4                # a video asset, whatever --kind says
 python $P call animate --arg asset=<sprite ref> --arg motion_reference=<video id>
 python $P wait <job_id>                                        # then: python $P download <result ref> --out out/knight
