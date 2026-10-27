@@ -31,7 +31,10 @@ powershell -ExecutionPolicy Bypass -File tools\windows-memory-watchdog\install.p
 ```
 
 It logs each drop to `%LOCALAPPDATA%\memory-watchdog\watchdog.log`; `config.json` there (`free_below_gb`,
-`min_cache_gb`) changes the thresholds.
+`min_cache_gb`, `vram_below_gb`) changes the thresholds. It also shows who holds the GPU's memory: ComfyUI and the
+models it has loaded, Ollama and its models, the Windows desktop and other apps. Run
+`python %LOCALAPPDATA%\memory-watchdog\memory_watchdog.py --status` to see it now; the log gets the same breakdown
+whenever less than 1.5 GB of VRAM is free. It never frees VRAM itself: `POST /free {"unload_models": true}` does.
 
 ## Linux or a cloud GPU
 
