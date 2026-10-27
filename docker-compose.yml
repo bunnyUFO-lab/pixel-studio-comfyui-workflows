@@ -6,8 +6,8 @@ services:
     build:
       context: ./docker
       args:
-        COMFYUI_REF: ${COMFYUI_REF:-v0.38.2}
-    image: comfyui-local:${COMFYUI_REF:-v0.38.2}
+        COMFYUI_REF: ${COMFYUI_REF:-v0.41.3}
+    image: comfyui-local:${COMFYUI_REF:-v0.41.3}
     pull_policy: build
     restart: unless-stopped
     ports:

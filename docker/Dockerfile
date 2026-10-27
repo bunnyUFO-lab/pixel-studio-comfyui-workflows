@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG TORCH_INDEX=https://download.pytorch.org/whl/cu128
 RUN pip install torch torchvision torchaudio --index-url ${TORCH_INDEX}
 
-ARG COMFYUI_REF=v0.38.2
+ARG COMFYUI_REF=v0.41.3
 RUN git clone --depth 1 --branch ${COMFYUI_REF} https://github.com/comfyanonymous/ComfyUI /opt/ComfyUI \
     && pip install -r /opt/ComfyUI/requirements.txt -r /opt/ComfyUI/manager_requirements.txt
 
