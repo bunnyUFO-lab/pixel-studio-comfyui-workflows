@@ -66,7 +66,7 @@ CFG = resolve_config() if modal.is_local() else json.loads(os.environ.get("PSC_M
 GPUS = [g.strip() for g in CFG["gpu"].split(",") if g.strip()]
 GPU = GPUS if len(GPUS) > 1 else GPUS[0]       # a list = Modal's ordered fallback
 IDLE = CFG["idle"]
-COMFYUI_REF = os.environ.get("COMFYUI_REF", "v0.38.2")    # keep in step with docker-compose.yml
+COMFYUI_REF = os.environ.get("COMFYUI_REF", "v0.41.3")    # keep in step with docker-compose.yml
 COMFY = "/opt/ComfyUI"
 MODELS = "/models"
 WORKFLOWS = f"{COMFY}/user/default/workflows"

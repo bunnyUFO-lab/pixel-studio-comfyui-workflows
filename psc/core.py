@@ -3,7 +3,7 @@ import re
 from collections import namedtuple
 
 DEFAULT_PORT = 8188
-DEFAULT_COMFYUI_REF = "v0.38.2"
+DEFAULT_COMFYUI_REF = "v0.41.3"
 QUOTES = chr(34) + chr(39)
 
 Check = namedtuple("Check", "status name detail")  # status: OK / WARN / FAIL / SKIP
