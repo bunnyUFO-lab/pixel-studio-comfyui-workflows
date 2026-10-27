@@ -1,77 +1,72 @@
 # ComfyUI on Modal (cloud GPU)
 
-`modal_comfy.py` runs this repo's ComfyUI on a Modal L40S (48 GB) for Sprite Studio
-to use when the PC is busy or off. It is the same ComfyUI as `docker/Dockerfile`
-(tag, custom nodes, the repo's own nodes and workflows). Models live on a Modal
-Volume and are downloaded inside Modal, so nothing large goes up from home.
+`modal_comfy.py` runs the same ComfyUI as the Docker setup on a [Modal](https://modal.com) cloud GPU (L40S, 48 GB),
+for when you have no local GPU or it is busy. Models are downloaded inside Modal, and the server scales to zero when
+idle, so you pay only while it runs.
 
-Sprite Studio calls it over HTTPS like any ComfyUI. The Modal CLI is only needed
-to deploy or update it, from this PC.
+## Setup
 
-## One-time setup
-
-1. Modal account: add a payment method (unlocks the monthly free credits), then
-   set a **workspace budget** in the billing settings as a hard spending stop.
-2. Client, in its own venv (not this repo's):
+1. Create a Modal account, add a payment method and set a workspace budget as a spending limit.
+2. Install the Modal client and sign in:
 
    ```bash
-   py -m venv ~/.venvs/modal
-   ~/.venvs/modal/Scripts/python.exe -m pip install modal
-   ~/.venvs/modal/Scripts/modal.exe setup      # browser sign-in; token in ~/.modal.toml
+   pip install modal
+   modal setup
    ```
 
-3. Models (CPU container; resumable, skips what is already there):
+3. Download the models and deploy with the CLI (settings in `cloud/modal.env`, see below); it prints the
+   `COMFY_SOURCES` entry for Pixel Studio:
 
    ```bash
-   ~/.venvs/modal/Scripts/modal.exe run cloud/modal_comfy.py::download
-   ~/.venvs/modal/Scripts/modal.exe run cloud/modal_comfy.py::list_models
+   pixel-studio-comfy cloud modal deploy --download      # --gpu, --max-containers, --idle, --app, --live, --dry-run ...
    ```
 
-   The default (`--workflows pixel`) is every workflow Sprite Studio uses, the
-   same list as `env/pixel.env`. `--workflows starter` is just drafts, prompt to
-   sprite, pixelize and Qwen edits (about 30 GB); `all` or a comma-separated list
-   also work. Storage is free up to 1 TiB a month, then $0.09 per GiB-month.
-
-4. Deploy (prints the endpoint URL, `https://<workspace>--sprite-studio-comfy-comfyui.modal.run`):
+   The CLI finds the Modal client on PATH or through the `PSC_MODAL` environment variable. The raw commands do the
+   same, and print the server URLs:
 
    ```bash
-   ~/.venvs/modal/Scripts/modal.exe deploy cloud/modal_comfy.py
+   modal run cloud/modal_comfy.py::download              # --workflows pixel (default), all, or a comma-separated list
+   modal deploy cloud/modal_comfy.py
    ```
 
-5. Proxy auth token: Modal dashboard, workspace settings, **Proxy Auth Tokens**,
-   create one. Its key and secret go only into the server's environment
-   (`MODAL_KEY`, `MODAL_SECRET`), never into Git. Requests without them get 401.
+5. In the Modal dashboard, create a **Proxy Auth Token**. Requests must send it as the `Modal-Key` and
+   `Modal-Secret` headers.
 
-## Using it from Sprite Studio
+## Use
 
-```
-COMFY_SOURCES=[{"name":"pc","url":"http://<pc address>:8188"},
-               {"name":"cloud","url":"https://<workspace>--sprite-studio-comfy-comfyui.modal.run","probe":0,
-                "cost_per_hour":1.95,"headers":{"Modal-Key":"$MODAL_KEY","Modal-Secret":"$MODAL_SECRET"}}]
-```
+Connect to the URL like any ComfyUI server, with the two headers. The first request after a quiet spell wakes the
+GPU (about half a minute), and it shuts down again 5 minutes after the last request.
 
-`cost_per_hour` (the L40S price) lets the job queue show roughly what each cloud
-job cost. The client turns WebSocket compression off: Modal's proxy accepts a
-compressed socket and then closes it at once, which loses live progress.
+To take it down: `modal app stop sprite-studio-comfy`.
 
-`probe: 0` because any request wakes the GPU (and starts billing).
+## Job API (parallel jobs)
 
-## Test by hand
+`modal deploy` also publishes the **jobs** endpoint (`https://<workspace>--<app>-jobs.modal.run`): a stateless job API,
+protocol `psc-job/v1` (see [docs/job-api.md](../docs/job-api.md)). Each job runs alone in its own ComfyUI container, up
+to `MODAL_MAX_CONTAINERS` at once, and comes back with every file it wrote plus its timing and cost. The old
+single-container `comfyui` endpoint above is unchanged and still deployed.
+
+Settings live in `cloud/modal.env` (git-ignored; copy `cloud/modal.env.example`). Precedence: process environment >
+`cloud/modal.env` > defaults, read once at deploy time:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `MODAL_APP` | `sprite-studio-comfy` | app name; use another name to try changes without touching the live app. `cloud modal deploy` refuses this name unless you pass `--live` (a deploy changes the live endpoint's GPU and cost) |
+| `MODAL_GPU` | `RTX-PRO-6000,L40S` | comma list, tried in order |
+| `MODAL_MAX_CONTAINERS` | `3` | job containers at once |
+| `MODAL_IDLE_SECONDS` | `300` | how long a warm container waits for the next job |
+| `MODAL_PRESET` | `pixel` | default `--workflows` of `download` |
+| `MODAL_JOB_TIMEOUT` | `3600` | per-job ceiling, seconds |
 
 ```bash
-curl -H "Modal-Key: $MODAL_KEY" -H "Modal-Secret: $MODAL_SECRET" https://<url>/system_stats
+modal run cloud/modal_comfy.py::smoke          # one job on a job container: GPU, boot, run, cost, files
+modal deploy cloud/modal_comfy.py              # prints the comfyui and jobs URLs
+python cloud/job_smoke.py --url <jobs url> --n 1   # through HTTP; needs MODAL_KEY / MODAL_SECRET in the environment
 ```
 
-The first request after idle starts a container: expect a cold start of about
-half a minute, then model loading on the first job.
+Add the jobs endpoint to Sprite Studio as a `COMFY_SOURCES` entry: `pixel-studio-comfy cloud modal snippet` prints it
+(`deploy` prints it too). Its headers are the `$MODAL_KEY` / `$MODAL_SECRET` references to your proxy auth token.
 
-## Costs and settings
-
-- The GPU bills per second while a container runs, including the idle window
-  after the last request (`MODAL_IDLE_SECONDS`, default 300).
-- `max_containers=1`: one GPU at most, whatever is queued.
-- Measured: cold start (asleep to ComfyUI answering) about 23 s; a sprite job
-  on a warm GPU about 14 s; the first job after a wake also loads its models.
-- `MODAL_GPU` (default `L40S`) and `COMFYUI_REF` (default `v0.38.2`, keep in
-  step with `docker-compose.yml`) are read at deploy time.
-- `~/.venvs/modal/Scripts/modal.exe app stop sprite-studio-comfy` takes it down.
+Cost: a job is billed from the moment its container starts. The first job of a container also pays the ComfyUI start
+(`timing.boot`), and a container stays up `MODAL_IDLE_SECONDS` after its last job, which no job's `cost` includes.
+Rates are in `cloud/gpu_rates.json` (read with `modal billing rates --json`). `cost.usd` counts the GPU only.

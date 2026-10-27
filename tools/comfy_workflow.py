@@ -40,40 +40,30 @@ QWEN_MODEL = "qwen_image_2.1_int8_convrot.safetensors"
 QWEN_TE = "qwen3vl_8b_int8_convrot.safetensors"
 QWEN_VAE = "qwen_image_2.1_vae_bf16.safetensors"
 
-# FLUX 3 Image Klein (Black Forest Labs, 5.6B; FLUX Kommunity licence: commercial outputs only under US$5M revenue,
-# with content filtering or review). Gated repo: accept the terms on HF, HF_TOKEN in .secrets.env. ComfyUI >= 0.41.
-KLEIN_HF = "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main"
-KLEIN_MODEL = "flux3-image-klein-int8-convrot.safetensors"           # distilled: 16 steps, cfg 1 (5.8 GB)
-KLEIN_TE = "qwen3vl_4b_int8_convrot.safetensors"                    # 4.9 GB, same file as Krea 2's
-KLEIN_TE_URL = "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/" + KLEIN_TE   # ungated copy
-KLEIN_VAE = "flux2-vae.safetensors"
-KLEIN_UPSAMPLER = "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors"   # 6.7 GB, what Comfy's templates use
-
-# Background removal (core LoadBackgroundRemovalModel), MIT
-BIREFNET = "birefnet.safetensors"
-BIREFNET_URL = "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors"
-
-# Z-Image Turbo (Tongyi-MAI, Apache-2.0) text-to-image, Comfy-Org repack
-ZIMAGE_HF = "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files"
-# 8-bit builds (int8 model 5.8 GB, fp8 text encoder 5.3 GB) instead of bf16 (11.5 + 7.5 GB): on the RTX 4090 the
-# sprite workflow peaks at 14.5 GB instead of 21.8 GB, loads ~40% faster and makes the same images, so a local
-# LLM fits beside it. Measured 2026-10-05 (game-dev workspace card "ComfyUI Pixel-Art Efficiency").
-ZIMAGE_MODEL = "z_image_turbo_int8_convrot.safetensors"
-ZIMAGE_TE = "qwen_3_4b_fp8_mixed.safetensors"
-ZIMAGE_VAE = "ae.safetensors"
-# Pixel-art style LoRA for Z-Image Turbo (tarn59, Apache-2.0), trigger "Pixel art style."
-PIXEL_LORA = "pixel_art_style_z_image_turbo.safetensors"
-PIXEL_LORA_URL = "https://huggingface.co/tarn59/pixel_art_style_lora_z_image_turbo/resolve/main/" + PIXEL_LORA
-
-# Pixel-art sprite animation LoRA for Wan 2.2 I2V (styly-agents, Apache-2.0); same file on HIGH and LOW
-PIXEL_ANIM_LORA = "wan2.2_animate_adapter_model.safetensors"
-PIXEL_ANIM_LORA_URL = "https://huggingface.co/styly-agents/Wan2-2-pixel-animate/resolve/main/" + PIXEL_ANIM_LORA
-
-# Wan Animate 2 (Wan-Video, Apache-2.0) motion transfer, Comfy-Org repack
-ANIMATE_HF = "https://huggingface.co/Comfy-Org/Wan-Animate-2/resolve/main"
-ANIMATE_MODEL = "wan_animate_2_int8_convrot.safetensors"
-ANIMATE_LORA = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
-CLIP_VISION_H = "clip_vision_h.safetensors"
+# Fast local video models for sprites (tools/build_pixel_sprite_fast.py). Base models Apache-2.0, Comfy-Org repacks.
+WAN21_HF = f"{HF}/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files"
+WAN22_HF = f"{HF}/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files"
+TI2V_5B = "wan2.2_ti2v_5B_fp16.safetensors"           # 10 GB, Wan 2.2 text/image-to-video 5B, 24 fps
+WAN22_VAE = "wan2.2_vae.safetensors"                   # the 5B's own VAE (16x spatial); 14B models use wan_2.1_vae
+VACE_1_3B = "wan2.1_vace_1.3B_fp16.safetensors"       # 4.3 GB, Wan 2.1 T2V 1.3B + VACE (first/last frame, pose)
+# Step-distill LoRAs. FastWan (FastVideo, Apache-2.0) is the one fit to ship; Turbo (quanhaol, code CC-BY-NC-SA-4.0)
+# and CausVid (tianweiy, CC-BY-NC-4.0) are non-commercial, kept for comparison only.
+FASTWAN_5B_LORA = "Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors"
+TURBO_5B_LORA = "Wan22_TI2V_5B_Turbo_lora_rank_64_fp16.safetensors"
+CAUSVID_1_3B_LORA = "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors"
+KIJAI_HF = f"{HF}/Kijai/WanVideo_comfy/resolve/main"
+# Frame interpolation (core FrameInterpolate node), RIFE 4.26 (MIT), 22 MB
+RIFE = "rife_v4.26.safetensors"
+RIFE_URL = f"{HF}/Comfy-Org/Frame-Interpolation/resolve/main/frame_interpolation/{RIFE}"
+URLS.update({
+    TI2V_5B: f"{WAN22_HF}/diffusion_models/{TI2V_5B}",
+    WAN22_VAE: f"{WAN22_HF}/vae/{WAN22_VAE}",
+    VACE_1_3B: f"{WAN21_HF}/diffusion_models/{VACE_1_3B}",
+    FASTWAN_5B_LORA: f"{KIJAI_HF}/FastWan/{FASTWAN_5B_LORA}",
+    TURBO_5B_LORA: f"{HF}/hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF/resolve/main/{TURBO_5B_LORA}",
+    CAUSVID_1_3B_LORA: f"{KIJAI_HF}/{CAUSVID_1_3B_LORA}",
+    RIFE: RIFE_URL,
+})
 
 # Node colors as (color, bgcolor)
 GREEN, RED, YELLOW, BLUE = ("#232", "#353"), ("#322", "#533"), ("#432", "#653"), ("#223", "#335")

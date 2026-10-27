@@ -130,13 +130,17 @@ def palette_error(rgb_pixels, palette, percentile=97):
     return float(np.percentile(np.sqrt(((lab - pal[nearest_index(lab, pal)]) ** 2).sum(-1)), percentile))
 
 
-def auto_palette(rgb_pixels, max_colors=32, max_error=20.0):
-    """Fewest colours (2..max_colors) whose palette keeps the colour error (97th percentile of flat pixels, Lab) under max_error."""
+AUTO_MIN_COLORS = 10   # automatic palettes never go below this: fewer read as flat, washed-out sprites (owner, 19 Oct 2026)
+
+
+def auto_palette(rgb_pixels, max_colors=32, max_error=20.0, min_colors=AUTO_MIN_COLORS):
+    """Fewest colours (min_colors..max_colors) whose palette keeps the colour error (97th percentile of flat pixels, Lab)
+    under max_error. Art with fewer distinct colours than min_colors keeps the ones it has."""
     px = np.asarray(rgb_pixels, np.uint8).reshape(-1, 3)
     if len(px) > 30000:
         px = px[np.random.default_rng(0).choice(len(px), 30000, replace=False)]
     pal = None
-    for k in range(2, max_colors + 1):
+    for k in range(max(2, min(min_colors, max_colors)), max_colors + 1):
         pal = kmeans_palette(px, k)
         if palette_error(px, pal) <= max_error or len(pal) < k:
             break
@@ -786,7 +790,7 @@ class Pixelize:
                         {"tooltip": "What 'pixels' means. subject height uses the first image's grid for all. whole frame = the frame itself becomes 'pixels' tall, nothing cropped to the subject and no padding: for a parallax layer or anything that must keep its exact size and its empty areas. body height (per frame) = each image's body (thin props like staffs ignored) becomes 'pixels' tall: for views drawn at different scales. auto = the input is already (upscaled) pixel art: detect its grid and recover it exactly."}),
             "method": (["pixeloe", "dominant", "median", "center", "mean"], {"tooltip": "How each art pixel is chosen. pixeloe = PixelOE's contrast-aware method (outline expansion; cleanest for illustrations). dominant = most common palette colour in the cell. median/center/mean = that colour of the cell, snapped to the palette."}),
             "smooth": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "Edge-preserving smoothing before pixelizing (Kuwahara radius in art pixels). Flattens texture/noise into solid areas; 0 = off. Ignored for 'auto (detect grid)'."}),
-            "colors": ("INT", {"default": 16, "min": 0, "max": 256, "tooltip": "Number of colours. 0 = automatic: the fewest colours that keep the colour error under color_error. With a preset/hex palette: use only its N most fitting colours (0 = all)."}),
+            "colors": ("INT", {"default": 16, "min": 0, "max": 256, "tooltip": "Number of colours. 0 = automatic: the fewest colours (at least 10) that keep the colour error under color_error. With a preset/hex palette: use only its N most fitting colours (0 = all)."}),
             "color_error": ("FLOAT", {"default": 20.0, "min": 2.0, "max": 60.0, "step": 0.5, "tooltip": "colors = 0 only: allowed colour difference (Lab, 90th percentile, so small areas like blades and eyes count) from the original. Higher = fewer colours (12 = faithful, 20 = simplified, 30+ = very few)."}),
             "palette": ("STRING", {"default": "auto", "tooltip": "auto, a preset (PICO-8, DB32, Endesga-32, GameBoy) or hex colours (#1a1c2c #5d275d ...)."}),
             "shared_palette": ("BOOLEAN", {"default": True, "tooltip": "Batches (frames/views): one palette for all."}),
@@ -813,6 +817,70 @@ class Pixelize:
         frames = pad_to_same_size(frames)
         preview = [nearest_upscale(f, preview_scale) for f in frames]
         return (to_image_tensor(frames), to_image_tensor(preview), palette_to_text(pals[0]), "\n".join(infos))
+
+
+def keyed_background(native):
+    """Cells of the plain background in on-grid pixel art: exactly the most common border colour, connected to the
+    border. The refiner gives a cell on the subject's edge the background colour when most of it was background;
+    the cut-out alone would keep those as a light halo."""
+    from scipy import ndimage
+    rgb = native[..., :3]
+    border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
+    cols, counts = np.unique(border, axis=0, return_counts=True)
+    same = (rgb == cols[counts.argmax()]).all(-1)
+    lbl, _ = ndimage.label(same)
+    edge = np.unique(np.concatenate([lbl[0], lbl[-1], lbl[:, 0], lbl[:, -1]]))
+    return np.isin(lbl, edge[edge > 0])
+
+
+def grid_cutout(native, cutout, coverage=0.5, padding=1, cleanup=False, key_background=True):
+    """Pixel art already on its grid (one image pixel per art pixel, opaque) + the full-size cut-out it was made from
+    -> the sprite with hard alpha, trimmed to the subject. A cell is opaque when `coverage` of it is subject and,
+    with key_background, it is not the plain background colour reaching the border."""
+    ny, nx = native.shape[:2]
+    cell_x, cell_y = cutout.shape[1] / nx, cutout.shape[0] / ny
+    if abs(cell_x - cell_y) > 1e-6:
+        raise ValueError(f"cut-out {cutout.shape[1]}x{cutout.shape[0]} is not a whole grid of the {nx}x{ny} pixel art")
+    keep = coverage_alpha(cutout, cell_x, 0.0, 0.0, nx, ny, coverage)
+    if key_background:
+        keep &= ~keyed_background(native)
+    out = native.copy()
+    out[..., 3] = np.where(keep, 255, 0)
+    out[~keep] = 0
+    if cleanup:
+        out = cleanup_strays(out)
+    x0, y0, x1, y1 = subject_bbox(out[..., 3] > 0)
+    out = out[y0:y1, x0:x1]
+    return np.pad(out, ((padding, padding), (padding, padding), (0, 0))) if padding else out
+
+
+class GridCutout:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "pixel_art": ("IMAGE", {"tooltip": "Pixel art at its native grid, background included (e.g. Krea 2 Pixel Art Refiner with scale_to_original off)."}),
+            "cutout": ("IMAGE", {"tooltip": "The full-size image it was made from, with the background removed (alpha)."}),
+            "coverage": ("FLOAT", {"default": 0.5, "min": 0.05, "max": 0.95, "step": 0.05, "tooltip": "Share of a cell that must be subject for the art pixel to stay."}),
+            "padding": ("INT", {"default": 1, "min": 0, "max": 64, "tooltip": "Transparent art pixels around the subject."}),
+            "cleanup": ("BOOLEAN", {"default": False, "tooltip": "Remove isolated stray pixels (distinct ones like eyes are kept)."}),
+            "preview_scale": ("INT", {"default": 8, "min": 1, "max": 32, "tooltip": "Nearest-neighbour zoom for the preview output."}),
+        }, "optional": {
+            "key_background": ("BOOLEAN", {"default": True, "tooltip": "Also drop cells of the plain background colour that reach the border (the halo the cut-out alone leaves on the subject's edge)."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
+    RETURN_NAMES = ("pixel_art", "preview", "info")
+    FUNCTION = "run"
+    CATEGORY = "comfyui_workflows/pixel"
+    DESCRIPTION = "Cut a sprite out of pixel art that is already on its grid, using the full-size cut-out's alpha. No resampling and no new colours."
+
+    def run(self, pixel_art, cutout, coverage, padding, cleanup, preview_scale, key_background=True):
+        arts, cuts = to_rgba_np(pixel_art), to_rgba_np(cutout)
+        frames = [grid_cutout(a, cuts[min(i, len(cuts) - 1)], coverage, padding, cleanup, key_background) for i, a in enumerate(arts)]
+        frames = pad_to_same_size(frames)
+        colours = len(np.unique(frames[0][frames[0][..., 3] > 0][:, :3], axis=0))
+        info = f"{frames[0].shape[1]}x{frames[0].shape[0]} art px from a {arts[0].shape[1]}x{arts[0].shape[0]} grid, {colours} colours"
+        return (to_image_tensor(frames), to_image_tensor([nearest_upscale(f, preview_scale) for f in frames]), info)
 
 
 # ----------------------------------------------------------------------------- sprites through video models
@@ -848,6 +916,8 @@ class PrepareSpriteForVideo:
             "target_size": ("INT", {"default": 640, "min": 128, "max": 1536, "step": 16, "tooltip": "Approximate longest side sent to the video model."}),
             "padding": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 2.0, "step": 0.05, "tooltip": "Free space around the sprite for motion, as a fraction of its size (each side)."}),
             "bg_color": ("STRING", {"default": "auto", "tooltip": "auto = a flat colour far from the sprite palette, or a hex colour."}),
+        }, "optional": {
+            "multiple": ("INT", {"default": 16, "min": 8, "max": 64, "step": 8, "tooltip": "Width and height are made divisible by this (16 for Wan; 32 for SCAIL 2). The canvas grows by whole art pixels."}),
         }}
 
     RETURN_TYPES = ("IMAGE", "PIXEL_SPEC", "INT", "INT", "STRING")
@@ -856,7 +926,7 @@ class PrepareSpriteForVideo:
     CATEGORY = "comfyui_workflows/pixel"
     DESCRIPTION = "Upscale a pixel sprite by an integer factor onto a flat background for a video model, and remember the grid."
 
-    def run(self, sprite, target_size, padding, bg_color):
+    def run(self, sprite, target_size, padding, bg_color, multiple=16):
         native, detected = recover_native(to_rgba_np(sprite)[0])
         src_h, src_w = native.shape[:2]
         x0, y0, x1, y1 = subject_bbox(native[..., 3] > 0)
@@ -866,9 +936,9 @@ class PrepareSpriteForVideo:
         pad_x, pad_y = int(math.ceil(w * padding)), int(math.ceil(h * padding))
         cw, ch = w + 2 * pad_x, h + 2 * pad_y
         f = max(1, round(target_size / max(cw, ch)))
-        while (cw * f) % 16:
+        while (cw * f) % multiple:
             cw += 1
-        while (ch * f) % 16:
+        while (ch * f) % multiple:
             ch += 1
         bg = parse_palette(bg_color)
         bg = bg[0] if bg is not None else pick_background(palette)
