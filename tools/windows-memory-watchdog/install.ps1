@@ -32,7 +32,7 @@ $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
   -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -Priority 7
 $Principal = New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive -RunLevel Limited
 $Description = "Drops the docker-desktop WSL VM's file cache when Windows runs short of RAM, so ComfyUI model loads " +
-  "do not stall. Never stops ComfyUI, Docker or WSL; runs through pythonw.exe, so no window opens. " +
+  "do not stall, and once ComfyUI has been idle for 10 minutes. Never stops ComfyUI, Docker or WSL; runs through pythonw.exe, so no window opens. " +
   "Log: $Dir\watchdog.log. Undo: Unregister-ScheduledTask -TaskName '$TaskName'."
 
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Triggers -Settings $Settings -Principal $Principal `
