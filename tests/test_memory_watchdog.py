@@ -37,6 +37,22 @@ check(not mw.should_drop(1.3, 0.4, cfg), "does nothing when the VM has little ca
 check(not mw.should_drop(4.0, 17.3, cfg), "the threshold itself is not low")
 check(mw.should_drop(5.0, 3.0, dict(cfg, free_below_gb=6, min_cache_gb=3)), "config.json values replace the defaults")
 
+check(mw.idle_drop_due(10, 6.1, cfg), "drops what a past job left once ComfyUI has been idle 10 min")
+check(not mw.idle_drop_due(9.9, 6.1, cfg), "waits out the idle time first")
+check(not mw.idle_drop_due(60, 1.1, cfg), "an idle VM with little cache is left alone")
+check(not mw.idle_drop_due(600, 20, dict(cfg, idle_minutes=0)), "idle_minutes 0 turns the idle drop off")
+
+mw.HOME = os.path.join(ROOT, "tests", ".watchdog-state")      # State writes state.json under HOME
+os.makedirs(mw.HOME, exist_ok=True)
+try:
+    state = mw.State()
+    state.set("comfy-busy", 123.0)
+    check(mw.State().last["comfy-busy"] == 123.0, "state survives between runs")
+    check(state.due("idle-check", 5) and not state.due("idle-check", 5), "a check is due once per its interval")
+finally:
+    os.remove(os.path.join(mw.HOME, "state.json"))
+    os.rmdir(mw.HOME)
+
 groups, apps = mw.group_processes([("vmwp", 15.6), ("dwm", 1.7), ("chrome", 0.4), ("chrome", 0.2), ("ollama", 3.0),
                                     ("explorer", 0.2)])
 check(groups == {"ComfyUI's VM": 15.6, "Ollama": 3.0, "Windows desktop": 1.7}, "VM, Ollama and desktop get their own lines")

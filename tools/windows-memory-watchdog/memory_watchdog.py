@@ -9,6 +9,12 @@ cache to matter:
 
     wsl -d docker-desktop -u root sh -c "sync; echo 1 > /proc/sys/vm/drop_caches"
 
+It also tidies up when things go quiet: once ComfyUI has had no job queued or running for idle_minutes
+(Sprite Studio has unloaded its models by then) and the VM still holds idle_cache_gb or more of cache, it
+drops that cache too, so the RAM a past job (or the boot) left behind goes back to Windows without waiting
+for memory to run short. It looks at most every IDLE_CHECK_MINUTES and only reads ComfyUI's GET /queue
+before that, so an idle PC costs one local HTTP call per check.
+
 Only clean cache goes; files ComfyUI is using stay mapped. It never stops ComfyUI, Docker or WSL,
 and it does not start the VM when it is off. The task runs it with pythonw.exe and its children
 with CREATE_NO_WINDOW, so no window ever opens or takes focus.
@@ -36,6 +42,8 @@ import urllib.request
 DEFAULTS = {
     "free_below_gb": 4.0,   # act when Windows' available RAM is below this
     "min_cache_gb": 2.0,    # ...and the VM holds at least this much droppable file cache
+    "idle_minutes": 10,     # also drop once ComfyUI has had no job for this long (0 = only when memory is low)
+    "idle_cache_gb": 3.0,   # ...and the VM holds at least this much cache
     "distro": "docker-desktop",
     "vram_below_gb": 1.5,   # log who holds the GPU's memory when less than this is free
     "comfy_url": "http://127.0.0.1:8188",
@@ -45,6 +53,7 @@ HOME = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "me
 CHECK_SECONDS = 10          # the task starts this every minute; it checks this often until the next start
 RUN_SECONDS = 50
 QUIET_MINUTES = 30          # repeat a "low but nothing to drop" or error line at most this often
+IDLE_CHECK_MINUTES = 5      # while ComfyUI is idle, read the VM's cache at most this often
 GIB = 1024 ** 3
 
 
@@ -60,6 +69,10 @@ def parse_meminfo(text):
 
 def should_drop(free_gb, cache_gb, cfg):
     return free_gb < cfg["free_below_gb"] and cache_gb >= cfg["min_cache_gb"]
+
+
+def idle_drop_due(idle_minutes, cache_gb, cfg):
+    return 0 < cfg["idle_minutes"] <= idle_minutes and cache_gb >= cfg["idle_cache_gb"]
 
 
 def windows_available_gb():
@@ -175,6 +188,15 @@ def comfy_models(cfg):
         return "not answering"
 
 
+def comfy_busy(cfg):
+    """True while ComfyUI has a job running or queued. Not answering counts as idle: it has no job then either."""
+    try:
+        queue = http_json(cfg["comfy_url"].rstrip("/") + "/queue")
+        return bool(queue.get("queue_running") or queue.get("queue_pending"))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def ollama_models(cfg):
     """[(name, vram_gb)] Ollama has loaded now, or "not running"."""
     try:
@@ -236,7 +258,7 @@ def check_vram(cfg, log):
     gpu = gpu_memory()
     if gpu is None or gpu[2] >= cfg["vram_below_gb"]:
         return                                   # the usual case: one NVML call, no log line
-    if Quiet().due("low-vram"):
+    if State().due("low-vram"):
         log.info(vram_line(vram_report(cfg, gpu)))
 
 
@@ -250,8 +272,9 @@ def load_config():
     return cfg
 
 
-class Quiet:
-    """Remembers between runs when a repeating line was last logged, so it is logged once per QUIET_MINUTES."""
+class State:
+    """Timestamps kept between runs in state.json: when a repeating line was last logged (so it is logged once per
+    QUIET_MINUTES), when ComfyUI was last seen busy, when the idle check last read the VM."""
 
     def __init__(self):
         self.path = os.path.join(HOME, "state.json")
@@ -261,13 +284,16 @@ class Quiet:
         except (FileNotFoundError, ValueError):
             self.last = {}
 
-    def due(self, key):
-        if time.time() - self.last.get(key, 0) < QUIET_MINUTES * 60:
+    def due(self, key, minutes=QUIET_MINUTES):
+        if time.time() - self.last.get(key, 0) < minutes * 60:
             return False
-        self.last[key] = time.time()
+        self.set(key, time.time())
+        return True
+
+    def set(self, key, value):
+        self.last[key] = value
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.last, f)
-        return True
 
 
 def make_log():
@@ -288,6 +314,13 @@ def status(cfg):
     print(f"Windows available: {free:.1f} GB (acts below {cfg['free_below_gb']} GB)")
     print(f"{cfg['distro']}: {'running' if running else 'not running'}, file cache {cache:.1f} GB "
           f"(acts from {cfg['min_cache_gb']} GB)")
+    if cfg["idle_minutes"]:
+        busy = comfy_busy(cfg)
+        since = State().last.get("comfy-busy")
+        idle = "busy now" if busy else f"idle {(time.time() - since) / 60:.0f} min" if since else "idle"
+        print(f"ComfyUI: {idle} (drops from {cfg['idle_cache_gb']} GB of cache after {cfg['idle_minutes']} idle min)")
+    else:
+        print("Idle drop: off (idle_minutes is 0)")
     print("Would drop the cache now." if running and should_drop(free, cache, cfg) else "Nothing to do now.")
     print("\n".join(vram_status(vram_report(cfg), cfg)))
 
@@ -296,7 +329,7 @@ def run(cfg, log):
     free = windows_available_gb()
     if free >= cfg["free_below_gb"]:
         return                                   # the usual case: no wsl call, no log line
-    quiet = Quiet()
+    quiet = State()
     distro = cfg["distro"]
     if not vm_running(distro):
         if quiet.due("not-running"):
@@ -307,12 +340,35 @@ def run(cfg, log):
         if quiet.due("small-cache"):
             log.info(f"low memory ({free:.1f} GB free) but {distro} holds only {cache:.1f} GB of cache; left alone")
         return
+    drop(distro, free, cache, "low memory", log)
+
+
+def idle_reclaim(cfg, log):
+    """Drops the cache a finished job left behind once ComfyUI has been idle for idle_minutes."""
+    if not cfg["idle_minutes"]:
+        return
+    state, now = State(), time.time()
+    if comfy_busy(cfg) or "comfy-busy" not in state.last:
+        state.set("comfy-busy", now)
+        return
+    idle = (now - state.last["comfy-busy"]) / 60
+    if idle < cfg["idle_minutes"] or not state.due("idle-check", IDLE_CHECK_MINUTES):
+        return
+    distro = cfg["distro"]
+    if not vm_running(distro):
+        return
+    cache = vm_cache_gb(distro)
+    if idle_drop_due(idle, cache, cfg):
+        drop(distro, windows_available_gb(), cache, f"ComfyUI idle {idle:.0f} min", log)
+
+
+def drop(distro, free, cache, why, log):
     started = time.monotonic()
     wsl("-d", distro, "-u", "root", "sh", "-c", "sync; echo 1 > /proc/sys/vm/drop_caches", timeout=120)
     took = time.monotonic() - started
     time.sleep(15)                               # WSL hands freed pages back to Windows over ~10 s
-    log.info(f"dropped {distro} cache in {took:.1f} s: Windows free {free:.1f} -> {windows_available_gb():.1f} GB, "
-             f"VM cache {cache:.1f} -> {vm_cache_gb(distro):.1f} GB")
+    log.info(f"dropped {distro} cache ({why}) in {took:.1f} s: Windows free {free:.1f} -> "
+             f"{windows_available_gb():.1f} GB, VM cache {cache:.1f} -> {vm_cache_gb(distro):.1f} GB")
 
 
 def main():
@@ -323,11 +379,11 @@ def main():
     log = make_log()
     deadline = time.monotonic() + RUN_SECONDS   # a model load fills ~14 GB in under a minute: look every 10 s
     while True:
-        for check in (run, check_vram):
+        for check in (run, idle_reclaim, check_vram):
             try:
                 check(cfg, log)
             except Exception as e:  # never crash silently or loudly: log it, at most once per QUIET_MINUTES
-                if Quiet().due(f"error:{check.__name__}:{type(e).__name__}"):
+                if State().due(f"error:{check.__name__}:{type(e).__name__}"):
                     log.info(f"error in {check.__name__}: {type(e).__name__}: {e}")
         if time.monotonic() + CHECK_SECONDS > deadline:
             break
