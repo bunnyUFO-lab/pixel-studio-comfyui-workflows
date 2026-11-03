@@ -70,3 +70,5 @@ Add the jobs endpoint to Sprite Studio as a `COMFY_SOURCES` entry: `pixel-studio
 Cost: a job is billed from the moment its container starts. The first job of a container also pays the ComfyUI start
 (`timing.boot`), and a container stays up `MODAL_IDLE_SECONDS` after its last job, which no job's `cost` includes.
 Rates are in `cloud/gpu_rates.json` (read with `modal billing rates --json`). `cost.usd` counts the GPU only.
+
+RunPod Serverless runs the same job API behind RunPod's `/run` + `/status`: see [runpod/README.md](runpod/README.md).
