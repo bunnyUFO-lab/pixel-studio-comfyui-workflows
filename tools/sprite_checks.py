@@ -5,7 +5,8 @@ Scores one image, a sprite sheet cut into a grid of frames, or a folder of frame
 looking and no model. The gate ideas (ground line, zoom, clean background, loop closes) follow the method of
 agent-sprite-forge (MIT); the code here is our own.
 
-    python tools/sprite_checks.py <image|sheet|folder> [--scale N] [--frames COLSxROWS] [--base PATH] [--json]
+    python tools/sprite_checks.py <image|sheet|folder> [--scale N] [--frames COLSxROWS] [--base PATH]
+                                      [--background auto|none|#rrggbb] [--json]
 
 Scores (see SCORE_HELP for the meaning and the good range of each):
     grid_purity, grid_scale, grid_stability, colour_flicker, same_character, palette_size, gates, overall.
@@ -23,9 +24,11 @@ IMAGE_EXT = (".png", ".webp", ".bmp", ".gif", ".jpg", ".jpeg")
 GRID_ACCEPT = 0.97          # share of colour changes that must sit on the grid lines to call a grid found
 PURITY_GOOD = 0.97          # public trainer threshold for grid purity
 MAX_SCALE = 32
+NATIVE_MAX_COLOURS = 64     # a sprite with no grid but at most this many colours counts as native resolution (scale 1)
+BACKGROUND_SHARE = 0.9      # share of the border that must be one colour to call it a flat background
 
 SCORE_HELP = {
-    "grid_purity": "mean share of each sprite block's pixels equal to the block's main colour; good >= 0.97 (1.0 = clean grid)",
+    "grid_purity": "(scale 1 = native resolution: every block is one pixel, so purity is 1.0 by definition and palette size is the check) mean share of each sprite block's pixels equal to the block's main colour; good >= 0.97 (1.0 = clean grid)",
     "grid_scale": "detected pixel size in source pixels (1 = native resolution); null when no grid was found",
     "grid_stability": "share of frames whose grid (scale + offset) equals the sheet's most common grid; good = 1.0",
     "colour_flicker": "share of pixels that change colour between consecutive frames where the shape stays put; good <= 0.10",
@@ -63,6 +66,13 @@ def split_sheet(rgba, cols, rows):
     return [rgba[r * fh:(r + 1) * fh, c * fw:(c + 1) * fw] for r in range(rows) for c in range(cols)]
 
 
+def parse_frames(text):
+    m = re.fullmatch(r"\s*(\d+)\s*[xX]\s*(\d+)\s*", str(text))
+    if not m or int(m.group(1)) < 1 or int(m.group(2)) < 1:
+        raise ValueError(f"--frames must look like 4x1 (columns x rows, both at least 1), got {text!r}")
+    return int(m.group(1)), int(m.group(2))
+
+
 def load_frames(path, frames=None):
     """Return (list of RGBA arrays, source kind)."""
     if os.path.isdir(path):
@@ -72,7 +82,7 @@ def load_frames(path, frames=None):
         return [load_rgba(os.path.join(path, n)) for n in names], "folder"
     img = load_rgba(path)
     if frames:
-        cols, rows = (int(x) for x in frames.lower().split("x"))
+        cols, rows = parse_frames(frames)
         return split_sheet(img, cols, rows), "sheet"
     return [img], "image"
 
@@ -85,6 +95,62 @@ def pack(rgba):
         (rgba[..., 2].astype(np.uint32) << 8) | a
     k[a == 0] = 0
     return k
+
+
+def parse_background(text):
+    """'auto' | 'none' | '#rrggbb' -> ('auto', None) | ('none', None) | ('colour', key)."""
+    t = (text or "auto").strip().lower()
+    if t in ("auto", "none"):
+        return t, None
+    m = re.fullmatch(r"#?([0-9a-f]{6})", t)
+    if not m:
+        raise ValueError(f"--background must be auto, none or #rrggbb, got {text!r}")
+    v = int(m.group(1), 16)
+    return "colour", (v << 8) | 255
+
+
+def _flood_from_border(match):
+    """Pixels of `match` (bool array) connected (4-way) to a border pixel that is in `match`."""
+    reach = np.zeros_like(match)
+    reach[0], reach[-1], reach[:, 0], reach[:, -1] = match[0], match[-1], match[:, 0], match[:, -1]
+    while True:
+        new = reach.copy()
+        new[1:] |= reach[:-1]
+        new[:-1] |= reach[1:]
+        new[:, 1:] |= reach[:, :-1]
+        new[:, :-1] |= reach[:, 1:]
+        new &= match
+        if (new == reach).all():
+            return reach
+        reach = new
+
+
+def remove_background(keys, mode="auto", colour=None):
+    """Make a flat opaque background transparent (key 0). Returns (keys, background colour key or None).
+
+    auto: the border's main colour is the background when it covers >= BACKGROUND_SHARE of the border and is not
+    transparent already. colour: that colour. none: nothing. Only pixels of that colour connected to the border
+    are removed, so the same colour inside the sprite (a white eye on a white background) stays.
+    """
+    if mode == "none":
+        return keys, None
+    if mode == "auto":
+        border = np.concatenate([keys[0], keys[-1], keys[:, 0], keys[:, -1]])
+        bg = int(_mode(border))
+        if (bg & 255) == 0 or float((border == bg).mean()) < BACKGROUND_SHARE:
+            return keys, None
+    else:
+        bg = int(colour)
+    flood = _flood_from_border(keys == bg)
+    if not flood.any():
+        return keys, None
+    out = keys.copy()
+    out[flood] = 0
+    return out, bg
+
+
+def colour_hex(key):
+    return "#%02x%02x%02x" % ((key >> 24) & 255, (key >> 16) & 255, (key >> 8) & 255)
 
 
 def unpack(keys):
@@ -116,18 +182,25 @@ def grid_for_scale(cx, cy, s):
 def detect_grid(keys, scale=None, max_scale=MAX_SCALE):
     """Return dict(scale, ox, oy, score, found). With `scale` given, only the offset is searched."""
     cx, cy = change_positions(keys)
-    if scale:
+    if scale is not None:
         ox, oy, sc = grid_for_scale(cx, cy, scale)
         return dict(scale=scale, ox=ox, oy=oy, score=sc, found=sc >= GRID_ACCEPT)
+    native = dict(scale=1, ox=0, oy=0, score=1.0, found=True) if is_native(keys) else         dict(scale=None, ox=0, oy=0, score=0.0, found=False)
     if len(cx) < 2 or len(cy) < 2:
-        return dict(scale=None, ox=0, oy=0, score=0.0, found=False)
+        return native
     for s in range(max_scale, 1, -1):
         if s * 4 > min(keys.shape):
             continue
         ox, oy, sc = grid_for_scale(cx, cy, s)
         if sc >= GRID_ACCEPT:
             return dict(scale=s, ox=ox, oy=oy, score=sc, found=True)
-    return dict(scale=None, ox=0, oy=0, score=0.0, found=False)
+    return native
+
+
+def is_native(keys):
+    """No pixel-size grid, but a small palette: native resolution (scale 1). Blur and noise have hundreds of colours."""
+    k = keys[(keys & 255) > 0]
+    return bool(len(k)) and len(np.unique(k)) <= NATIVE_MAX_COLOURS
 
 
 def block_mode(blocks):
@@ -195,14 +268,80 @@ def _opaque_colours(keys):
     return set(np.unique(k).tolist())
 
 
-def score_frames(frames, scale=None, base=None):
-    keys = [pack(f) for f in frames]
+def _background_report(mode, colour, used):
+    """JSON block saying which background was used. used = list of background keys (None = transparent) per frame."""
+    found = [u for u in used if u is not None]
+    if mode == "none":
+        what = "none"
+    elif found:
+        what = colour_hex(max(set(found), key=found.count))
+    else:
+        what = "transparent"
+    return {"mode": mode, "colour": what, "frames_with_opaque_background": len(found)}
+
+
+def _check_scale(scale, keys):
+    if scale is None:
+        return
+    if scale < 1:
+        raise ValueError(f"--scale must be at least 1, got {scale}")
+    h, w = keys[0].shape
+    if scale > min(h, w):
+        raise ValueError(f"--scale {scale} is larger than the frame ({w}x{h}); a pixel cannot be bigger than the image")
+    boxes = [bbox(k) for k in keys]
+    boxes = [b for b in boxes if b is not None]
+    if boxes and scale > max(max(b[1] - b[0] + 1, b[3] - b[2] + 1) for b in boxes):
+        raise ValueError(f"--scale {scale} is larger than the sprite itself; a pixel cannot be bigger than the sprite")
+
+
+def _scale_warnings(scale, auto_scale, keys):
+    out = []
+    if scale is None:
+        return out
+    if auto_scale is not None and auto_scale != scale:
+        rel = ""
+        if scale > 1 and auto_scale % scale == 0:
+            rel = f" ({scale} divides {auto_scale}: every {scale}x{scale} block is then pure, so purity reads 1.0 whatever the art)"
+        elif scale > 1 and scale % auto_scale == 0:
+            rel = f" ({scale} is a multiple of {auto_scale}: blocks straddle several art pixels, so purity drops)"
+        out.append(f"--scale {scale} given but the grid detected in the image has scale {auto_scale}{rel}; "
+                   f"the purity number is for scale {scale}")
+    elif auto_scale is None and scale == 1:
+        allk = np.concatenate([k[(k & 255) > 0] for k in keys])
+        if len(np.unique(allk)) > NATIVE_MAX_COLOURS:
+            out.append(f"--scale 1 given but the image has {len(np.unique(allk))} colours and no grid; "
+                       f"purity 1.0 at scale 1 says nothing here")
+    return out
+
+
+def score_frames(frames, scale=None, base=None, background="auto"):
+    bmode, bcol = parse_background(background)
+    packed = [remove_background(pack(f), bmode, bcol) for f in frames]
+    keys = [p[0] for p in packed]
     n = len(keys)
+    _check_scale(scale, keys)
+    warnings = []
+    bg_report = _background_report(bmode, bcol, [p[1] for p in packed])
+    if bmode == "colour" and not bg_report["frames_with_opaque_background"]:
+        warnings.append(f"--background {background} given but no frame has that colour on its border; nothing was removed")
+    if bg_report["frames_with_opaque_background"]:
+        diff = {p[1] for p in packed if p[1] is not None}
+        if len(diff) > 1:
+            warnings.append("frames have different background colours: " + ", ".join(sorted(colour_hex(k) for k in diff)))
+        if bg_report["frames_with_opaque_background"] < n:
+            warnings.append("only some frames have an opaque background; the others are scored as transparent")
     dets = [detect_grid(k, scale) for k in keys]
+    auto = dets if scale is None else [detect_grid(k) for k in keys]
+    auto_found = [d["scale"] for d in auto if d["found"]]
+    detected = None
+    if auto_found:
+        vals, counts = np.unique(auto_found, return_counts=True)
+        detected = int(vals[counts.argmax()])
+    warnings += _scale_warnings(scale, detected, keys)
 
     # sheet grid = most common (scale, offset-on-grid) among frames that found a grid
     found = [d for d in dets if d["found"]]
-    if scale:
+    if scale is not None:
         sheet_scale = scale
     elif found:
         vals, counts = np.unique([d["scale"] for d in found], return_counts=True)
@@ -210,7 +349,8 @@ def score_frames(frames, scale=None, base=None):
     else:
         sheet_scale = None
 
-    res = {"frames": n, "frame_size": [int(frames[0].shape[1]), int(frames[0].shape[0])]}
+    res = {"frames": n, "frame_size": [int(frames[0].shape[1]), int(frames[0].shape[0])],
+           "background": bg_report, "detected_scale": detected, "scale_given": scale}
     q = {}
 
     # --- grid purity and scale
@@ -236,6 +376,8 @@ def score_frames(frames, scale=None, base=None):
             per.append(pur)
             offs.append((d["ox"] % sheet_scale, d["oy"] % sheet_scale, d["found"]))
         res["grid_scale"] = sheet_scale
+        if sheet_scale == 1:
+            res["grid_note"] = "scale 1 = native resolution: purity is 1.0 by definition (each block is one pixel); judge it by palette_size"
         res["grid_found"] = bool(len(found))
         res["grid_purity"] = round(float(np.mean(per)), 4)
         res["grid_purity_per_frame"] = [round(p, 4) for p in per]
@@ -281,7 +423,7 @@ def score_frames(frames, scale=None, base=None):
 
     # --- same character: drift from the base (first frame, or --base image)
     if base is not None:
-        bk = pack(base)
+        bk = remove_background(pack(base), bmode, bcol)[0]
         bd = detect_grid(bk, sheet_scale)
         bnat = snap(bk, sheet_scale, bd["ox"], bd["oy"])[0] if sheet_scale else bk
         base_cols = _opaque_colours(bnat)
@@ -317,8 +459,7 @@ def score_frames(frames, scale=None, base=None):
     bbs = [bbox(k) for k in keys]
     gates = {}
     if all(b is not None for b in bbs):
-        H = frames[0].shape[0]
-        ground = np.array([(H - 1 - b[1]) / s for b in bbs])      # distance of the lowest opaque row to the frame bottom
+        ground = np.array([(f.shape[0] - 1 - b[1]) / s for f, b in zip(frames, bbs)])      # distance of the lowest opaque row to the frame bottom
         height = np.array([(b[1] - b[0] + 1) / s for b in bbs])
         gates["ground_shift"] = round(float(ground.max() - ground.min()), 3)
         gates["zoom_variation"] = round(float((height.max() - height.min()) / np.median(height)), 4)
@@ -349,6 +490,7 @@ def score_frames(frames, scale=None, base=None):
     else:
         gates["loop_gap"] = gates["loop_mean_step"] = gates["loop_ok"] = None
     res["gates"] = gates
+    res["warnings"] = warnings
 
     res["quality"] = {k: round(v, 4) for k, v in q.items()}
     res["overall"] = round(float(np.mean(list(q.values()))), 4)
@@ -360,11 +502,11 @@ def _mode(a):
     return v[c.argmax()]
 
 
-def run(path, scale=None, frames=None, base=None):
+def run(path, scale=None, frames=None, base=None, background="auto"):
     fr, kind = load_frames(path, frames)
     sizes = {f.shape for f in fr}
     base_img = load_rgba(base) if base else None
-    res = score_frames(fr, scale, base_img)
+    res = score_frames(fr, scale, base_img, background)
     res = {"input": path.replace("\\", "/"), "kind": kind, **res}
     if len(sizes) > 1:
         res["note"] = "frames differ in size; padded bottom-centre for pixel comparisons"
@@ -393,6 +535,7 @@ def format_table(r):
     w = max(len(a) for a, _, _ in rows)
     lines = [f"{r['input']}  ({r['kind']}, {r['frames']} frame(s), {r['frame_size'][0]}x{r['frame_size'][1]})"]
     lines += [f"  {a:<{w}}  {b:>8}   good: {c}" for a, b, c in rows]
+    lines.append(f"  background used: {r['background']['colour']}")
     return "\n".join(lines)
 
 
@@ -402,10 +545,12 @@ def main(argv=None):
     ap.add_argument("--scale", type=int, help="pixel size in source pixels (detected when left out)")
     ap.add_argument("--frames", help="sheet layout as COLSxROWS, e.g. 4x1 (a single image without it is one frame)")
     ap.add_argument("--base", help="base sprite image to compare frames against (default: the first frame)")
+    ap.add_argument("--background", default="auto", metavar="auto|none|#rrggbb",
+                    help="flat opaque background to ignore: auto = the border's one colour (default), none, or a colour")
     ap.add_argument("--json", action="store_true", help="print the scores as JSON only")
     a = ap.parse_args(argv)
     try:
-        r = run(a.path, a.scale, a.frames, a.base)
+        r = run(a.path, a.scale, a.frames, a.base, a.background)
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -413,6 +558,8 @@ def main(argv=None):
         print(json.dumps(r, indent=2))
     else:
         print(format_table(r))
+    for w in r.get("warnings", []):
+        print(f"warning: {w}", file=sys.stderr)
     return 0
 
 
