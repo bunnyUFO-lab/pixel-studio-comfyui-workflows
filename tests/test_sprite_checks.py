@@ -197,15 +197,15 @@ class SpriteChecksTest(unittest.TestCase):
         self.assertTrue(g["loop_ok"])
 
     def test_each_corruption_hurts(self):
-        base = sc.score_frames(good_frames(2))["overall"]
+        base = sc.score_frames(good_frames(2), scale=S)["overall"]
         for fn in BAD:
             with self.subTest(fn.__name__):
-                bad = sc.score_frames(fn(good_frames(2), 7))["overall"]
+                bad = sc.score_frames(fn(good_frames(2), 7), scale=S)["overall"]
                 self.assertLess(bad, base)
 
     def test_five_good_rank_above_five_bad(self):
-        good = [sc.score_frames(good_frames(s, 1 + s % 2))["overall"] for s in range(10, 15)]
-        bad = [sc.score_frames(fn(good_frames(20 + i), i))["overall"] for i, fn in enumerate(BAD)]
+        good = [sc.score_frames(good_frames(s, 1 + s % 2), scale=S)["overall"] for s in range(10, 15)]
+        bad = [sc.score_frames(fn(good_frames(20 + i), i), scale=S)["overall"] for i, fn in enumerate(BAD)]
         self.assertGreater(min(good), max(bad), f"good={good} bad={bad}")
 
     def test_single_image_works(self):
@@ -224,7 +224,10 @@ class SpriteChecksTest(unittest.TestCase):
         r = sc.score_frames(noise(good_frames(5), 1))
         self.assertFalse(r["grid_found"])
         self.assertIsNone(r["grid_scale"])
-        self.assertEqual(r["quality"]["grid_purity"], 0.0)
+        self.assertIsNone(r["grid_purity"])
+        self.assertIsNone(r["overall"])
+        self.assertEqual(r["grid"], "unknown")
+        self.assertTrue(any("--scale 1" in w and "no grid" in w for w in r["warnings"]), r["warnings"])
 
     def test_cli_sheet_and_folder_json(self):
         with tempfile.TemporaryDirectory() as d:
@@ -394,19 +397,38 @@ class ScaleTest(unittest.TestCase):
                 self.assertTrue(r.stderr.startswith("error: --scale"), r.stderr)
                 self.assertNotIn("Traceback", r.stderr)
 
-    def test_native_scale_one_sprite(self):
+    def test_native_art_without_scale_is_unknown_not_perfect(self):
         native = draw_frame(8, 0)
         r = _score([native])
+        self.assertIsNone(r["detected_scale"])
+        self.assertIsNone(r["grid_purity"])
+        self.assertIsNone(r["overall"])
+        self.assertEqual(r["grid"], "unknown")
+        self.assertTrue(any("no grid" in w and "--scale 1" in w for w in r["warnings"]), r["warnings"])
+
+    def test_explicit_scale_one_leaves_purity_out(self):
+        native = draw_frame(8, 0)
+        r = _score([native], scale=1)
         self.assertEqual(r["grid_scale"], 1)
-        self.assertTrue(r["grid_found"])
         self.assertEqual(r["grid_purity"], 1.0)
-        self.assertIn("native", r["grid_note"])
-        self.assertEqual(r["warnings"], [])
+        self.assertIn("no information", r["grid_note"])
+        self.assertNotIn("grid_purity", r["quality"])
         self.assertGreater(r["overall"], 0.9)
-        r = _score([draw_frame(8, i) for i in range(FRAMES)])
-        self.assertEqual(r["grid_scale"], 1)
+        r = _score([draw_frame(8, i) for i in range(FRAMES)], scale=1)
         self.assertEqual(r["grid_stability"], 1.0)
-        self.assertEqual(_score([native], scale=1)["grid_purity"], 1.0)
+
+    def test_resized_native_does_not_score_perfect_without_scale(self):
+        """The reviewer's cases: a 1.15x nearest resize and 10% flipped pixels must not read 1.0 overall."""
+        native = draw_frame(8, 0)
+        big = np.array(Image.fromarray(native).resize((int(N * 1.15), int(N * 1.15)), Image.NEAREST))
+        self.assertIsNone(_score([big])["overall"])
+        rng = np.random.RandomState(3)
+        flipped = native.copy()
+        m = (rng.rand(N, N) < 0.1) & (native[..., 3] > 0)
+        flipped[m, :3] = 255 - flipped[m, :3]
+        r = _score([flipped])
+        self.assertIsNone(r["overall"])
+        self.assertIsNone(r["grid_purity"])
 
     def test_scale_one_on_a_noisy_image_warns(self):
         r = _score(noise(good_frames(5), 1), scale=1)
@@ -414,6 +436,36 @@ class ScaleTest(unittest.TestCase):
 
     def test_noisy_image_is_not_native(self):
         self.assertIsNone(_score(noise(good_frames(5), 1))["grid_scale"])
+
+
+class BackgroundWarningTest(unittest.TestCase):
+    def _warned(self, frame, **kw):
+        r = _score([frame], scale=S, **kw)
+        return any("no background was removed" in w for w in r["warnings"]), r
+
+    def test_checker_split_gradient_and_touching_sprite_warn(self):
+        spr = good_frames(1)[0]
+        h, w = spr.shape[:2]
+        alpha = spr[..., 3] > 0
+        yy, xx = np.mgrid[0:h, 0:w]
+        backs = {
+            "checker": np.where(((yy // S + xx // S) % 2 == 0)[..., None], (200, 20, 20, 255), (20, 20, 200, 255)),
+            "split": np.where((xx < w // 2)[..., None], (200, 20, 20, 255), (20, 20, 200, 255)),
+            "gradient": np.stack([yy * 255 // h, yy * 255 // h, 255 - yy * 255 // h, np.full_like(yy, 255)], axis=-1),
+        }
+        for name, bg in backs.items():
+            with self.subTest(name):
+                warned, r = self._warned(np.where(alpha[..., None], spr, bg).astype(np.uint8))
+                self.assertTrue(warned, r["warnings"])
+        touching = np.where(alpha[..., None], spr, (255, 0, 255, 255)).astype(np.uint8)
+        touching[:, :S] = (10, 200, 10, 255)
+        self.assertTrue(self._warned(touching)[0])
+
+    def test_flat_or_transparent_background_does_not_warn(self):
+        spr = good_frames(1)[0]
+        self.assertFalse(self._warned(spr)[0])
+        flat = np.where((spr[..., 3] > 0)[..., None], spr, (255, 0, 255, 255)).astype(np.uint8)
+        self.assertFalse(self._warned(flat)[0])
 
 
 class OtherFixesTest(unittest.TestCase):

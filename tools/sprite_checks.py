@@ -24,11 +24,11 @@ IMAGE_EXT = (".png", ".webp", ".bmp", ".gif", ".jpg", ".jpeg")
 GRID_ACCEPT = 0.97          # share of colour changes that must sit on the grid lines to call a grid found
 PURITY_GOOD = 0.97          # public trainer threshold for grid purity
 MAX_SCALE = 32
-NATIVE_MAX_COLOURS = 64     # a sprite with no grid but at most this many colours counts as native resolution (scale 1)
+NATIVE_MAX_COLOURS = 64     # --scale 1 on an image with more colours than this and no grid gets a warning
 BACKGROUND_SHARE = 0.9      # share of the border that must be one colour to call it a flat background
 
 SCORE_HELP = {
-    "grid_purity": "(scale 1 = native resolution: every block is one pixel, so purity is 1.0 by definition and palette size is the check) mean share of each sprite block's pixels equal to the block's main colour; good >= 0.97 (1.0 = clean grid)",
+    "grid_purity": "(null when no grid was found: the tool never claims scale 1 by itself, pass --scale 1 for native art; at scale 1 purity is 1.0 and carries no information, so overall leaves it out) mean share of each sprite block's pixels equal to the block's main colour; good >= 0.97 (1.0 = clean grid)",
     "grid_scale": "detected pixel size in source pixels (1 = native resolution); null when no grid was found",
     "grid_stability": "share of frames whose grid (scale + offset) equals the sheet's most common grid; good = 1.0",
     "colour_flicker": "share of pixels that change colour between consecutive frames where the shape stays put; good <= 0.10",
@@ -37,7 +37,7 @@ SCORE_HELP = {
     "palette_size": "distinct opaque colours after snapping to the grid, per frame and for the sheet; good <= 32 for the sheet",
     "gates": "ground_shift (px, good <= 1), zoom_variation (good <= 0.10), background_clean (good >= 0.98), "
              "loop_gap vs mean step (good: loop_ok true)",
-    "overall": "mean of 0..1 quality values of everything above; only for ranking sheets against each other",
+    "overall": "mean of 0..1 quality values of everything above; only for ranking sheets against each other; null when no grid was found and --scale was not given",
 }
 LEFT_OUT = [
     "identity by a learned model (face or body embedding): needs a model download",
@@ -185,7 +185,7 @@ def detect_grid(keys, scale=None, max_scale=MAX_SCALE):
     if scale is not None:
         ox, oy, sc = grid_for_scale(cx, cy, scale)
         return dict(scale=scale, ox=ox, oy=oy, score=sc, found=sc >= GRID_ACCEPT)
-    native = dict(scale=1, ox=0, oy=0, score=1.0, found=True) if is_native(keys) else         dict(scale=None, ox=0, oy=0, score=0.0, found=False)
+    native = dict(scale=None, ox=0, oy=0, score=0.0, found=False)  # the tool never claims scale 1 by itself
     if len(cx) < 2 or len(cy) < 2:
         return native
     for s in range(max_scale, 1, -1):
@@ -195,12 +195,6 @@ def detect_grid(keys, scale=None, max_scale=MAX_SCALE):
         if sc >= GRID_ACCEPT:
             return dict(scale=s, ox=ox, oy=oy, score=sc, found=True)
     return native
-
-
-def is_native(keys):
-    """No pixel-size grid, but a small palette: native resolution (scale 1). Blur and noise have hundreds of colours."""
-    k = keys[(keys & 255) > 0]
-    return bool(len(k)) and len(np.unique(k)) <= NATIVE_MAX_COLOURS
 
 
 def block_mode(blocks):
@@ -280,6 +274,23 @@ def _background_report(mode, colour, used):
     return {"mode": mode, "colour": what, "frames_with_opaque_background": len(found)}
 
 
+def _background_warnings(keys, packed):
+    """Warn when an opaque background was not removed (not flat, or the sprite touches the border)."""
+    out = []
+    bad = 0
+    for k, (_, used) in zip(keys, packed):
+        if used is not None:
+            continue
+        border = np.concatenate([k[0], k[-1], k[:, 0], k[:, -1]])
+        opaque = float(((border & 255) > 0).mean())
+        if opaque > 0 and float((border == _mode(border)).mean()) < BACKGROUND_SHARE:
+            bad += 1
+    if bad:
+        out.append(f"no background was removed in {bad} frame(s): the border is not one flat colour, or the sprite touches the border "
+                   "(checker, split, gradient and the like are not removed); the scores include whatever is behind the sprite")
+    return out
+
+
 def _check_scale(scale, keys):
     if scale is None:
         return
@@ -338,6 +349,10 @@ def score_frames(frames, scale=None, base=None, background="auto"):
         vals, counts = np.unique(auto_found, return_counts=True)
         detected = int(vals[counts.argmax()])
     warnings += _scale_warnings(scale, detected, keys)
+    if scale is None and detected is None:
+        warnings.append("no grid was found at scale 2 or more, so grid purity and the overall score are null (grid: unknown); "
+                        "if the art is at native resolution (one art pixel per image pixel), say so with --scale 1")
+    warnings += _background_warnings(keys, packed)
 
     # sheet grid = most common (scale, offset-on-grid) among frames that found a grid
     found = [d for d in dets if d["found"]]
@@ -357,12 +372,11 @@ def score_frames(frames, scale=None, base=None, background="auto"):
     if sheet_scale is None:
         res["grid_scale"] = None
         res["grid_found"] = False
+        res["grid"] = "unknown"
         res["grid_purity"] = None
         res["grid_purity_per_frame"] = []
         res["grid_stability"] = 0.0
         snapped = keys  # nothing to snap to; later checks run on the source pixels
-        q["grid_purity"] = 0.0
-        q["grid_stability"] = 0.0
         sheet_scale_eff = 1
     else:
         per = []
@@ -377,7 +391,7 @@ def score_frames(frames, scale=None, base=None, background="auto"):
             offs.append((d["ox"] % sheet_scale, d["oy"] % sheet_scale, d["found"]))
         res["grid_scale"] = sheet_scale
         if sheet_scale == 1:
-            res["grid_note"] = "scale 1 = native resolution: purity is 1.0 by definition (each block is one pixel); judge it by palette_size"
+            res["grid_note"] = "scale 1 = native resolution given with --scale 1: purity is 1.0 and carries no information (each block is one pixel); it is left out of overall, judge the art by palette_size"
         res["grid_found"] = bool(len(found))
         res["grid_purity"] = round(float(np.mean(per)), 4)
         res["grid_purity_per_frame"] = [round(p, 4) for p in per]
@@ -390,7 +404,8 @@ def score_frames(frames, scale=None, base=None, background="auto"):
             stab = 0.0
         res["grid_stability"] = round(stab, 4)
         res["grid_offset"] = list(modal[:2]) if modal else None
-        q["grid_purity"] = _clip((res["grid_purity"] - 0.85) / 0.15)
+        if sheet_scale != 1:
+            q["grid_purity"] = _clip((res["grid_purity"] - 0.85) / 0.15)
         q["grid_stability"] = stab
         sheet_scale_eff = sheet_scale
 
@@ -493,7 +508,7 @@ def score_frames(frames, scale=None, base=None, background="auto"):
     res["warnings"] = warnings
 
     res["quality"] = {k: round(v, 4) for k, v in q.items()}
-    res["overall"] = round(float(np.mean(list(q.values()))), 4)
+    res["overall"] = None if sheet_scale is None else round(float(np.mean(list(q.values()))), 4)
     return res
 
 
@@ -520,6 +535,7 @@ def format_table(r):
     f = lambda v, p=3: "n/a" if v is None else (f"{v:.{p}f}" if isinstance(v, float) else str(v))
     rows = [
         ("grid purity", f(r["grid_purity"]), ">= 0.97"),
+        ("grid", r.get("grid", "found" if r["grid_found"] else "-"), "found"),
         ("grid scale", f(r["grid_scale"]), "found (not null)"),
         ("grid stability", f(r["grid_stability"]), "1.0"),
         ("colour flicker", f(r["colour_flicker"]), "<= 0.10"),
