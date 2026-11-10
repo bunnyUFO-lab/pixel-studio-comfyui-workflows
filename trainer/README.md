@@ -53,13 +53,13 @@ with no token, no upload and no time limit unless you ask for them.
 | `DATASETS_ROOT` | `/workspace/datasets` | Where uploaded datasets land. |
 | `RUNNER_UPLOAD_MAX_BYTES` | 268435456 (256 MiB) | Largest upload body. |
 | `RUNNER_TIME_LIMIT_S` | none; 10800 (3 h) with a token | Seconds from the first start. With a token it must be above 0. |
-| `RUNNER_TIME_LIMIT_MAX_S` | 86400 | The limit may never go above this, not even by `POST /deadline`. A larger `RUNNER_TIME_LIMIT_S` exits 2. |
+| `RUNNER_TIME_LIMIT_MAX_S` | 10800 (3 h, the approved limit) | The limit may never go above this, not even by `POST /deadline`; the image's hung-runner backstop is this plus 10 minutes. A larger `RUNNER_TIME_LIMIT_S` exits 2. A higher ceiling must be set in the pod's environment when the machine is created. |
 | `RUNNER_IDLE_LIMIT_S` | 1800 with a token, else off | No running job and no authenticated request for this long. |
 | `RUNNER_STATE_DIR` | `/workspace/runner-state` | `boot.json` keeps the first start, so a restarted container does not get a new clock. |
 | `RUNNER_ON_EXIT` | `none`; the image sets `runpod-terminate` | `none`, `runpod-terminate` or `runpod-stop`: what `shutdown.py` asks RunPod to do when the runner has exited. Needs `RUNPOD_POD_ID` and `RUNPOD_API_KEY`, which RunPod puts into every pod. |
 | `RUNNER_SHUTDOWN_RETRY_S` | 10 | Seconds between the 3 tries of that call. |
 | `RUNNER_BOOT_ID` | `RUNPOD_POD_ID` | Whose clock `boot.json` holds. A `boot.json` written by another pod (a network volume reused by a new machine) is ignored and a fresh clock starts; the same pod restarting keeps its first start. |
-| `RUNNER_SHUTDOWN_HOLD_S` / `RUNNER_SHUTDOWN_HOLD_FOR_S` | 60 / 3600 | When ending the machine fails, `shutdown.py` retries every 60 s for an hour and then sleeps for ever. It never exits (see below). `RUNNER_SHUTDOWN_HOLD=0` turns that off. |
+| `RUNNER_SHUTDOWN_HOLD_S` / `RUNNER_SHUTDOWN_HOLD_MAX_S` | 60 / 300 | When ending the machine fails, `shutdown.py` retries for ever: first after 60 s, then the wait doubles up to 300 s. It never exits (see below). `RUNNER_SHUTDOWN_HOLD=0` turns that off. |
 
 With a token the runner also drops `HF_WRITE_TOKEN` and `RUNPOD_API_KEY` from the training process's environment. `HF_TOKEN`
 stays, because gated base models need it. `RUNNER_WATCH_EVERY_S` is capped at 60 and every number must be finite (`inf` and `nan` exit 2).
@@ -94,7 +94,7 @@ and the HTTP status, never the key.
 
 If the watchdog thread itself fails for any reason, the runner prints that and exits 3 rather than going on with no limit.
 
-**When ending the machine fails** (wrong endpoint or key scope, RunPod down, no network), `shutdown.py` tries the REST call and then `runpodctl remove pod <id>` (`runpodctl stop pod <id>` in stop mode; it ships in RunPod pods and uses the pod's own key, nothing secret on its command line), 3 times. If both fail it does **not exit**: it keeps trying every 60 s for an hour and then sleeps for ever. An exited container is restarted by RunPod, and the restarted runner would find the deadline passed, exit 3, fail again, and loop (billing) for ever; a container that never exits cannot. A missing key, a bad pod id and an unknown mode hold the same way. Such a pod keeps billing until it is ended in the console or by the app, which must also end any pod of ours that is past its deadline (ss-m10t4).
+**When ending the machine fails** (wrong endpoint or key scope, RunPod down, no network), `shutdown.py` tries the REST call and then `runpodctl pod remove <id>` (`runpodctl pod stop <id>` in stop mode, and the legacy `runpodctl remove pod <id>` / `runpodctl stop pod <id>` if the current form fails; it ships in RunPod pods and uses the pod's own key, nothing secret on its command line), 3 times. If both fail it does **not exit**: it keeps trying for ever, every 1 to 5 minutes (60 s, doubling, capped at 300 s). An exited container is restarted by RunPod, and the restarted runner would find the deadline passed, exit 3, fail again, and loop (billing) for ever; a container that never exits cannot. A missing key, a bad pod id and an unknown mode hold the same way. Such a pod keeps billing until it is ended in the console or by the app, which must also end any pod of ours that is past its deadline (ss-m10t4).
 
 **A RunPod "Stop" in the console ends in deleting the pod.** RunPod sends `SIGTERM`, the runner exits 0, and the entrypoint then asks for `runpod-terminate` (or `runpod-stop`, which keeps the disk, if that is what is set). After a stop signal each call gets a 5 s timeout, because Docker allows only about 10 s.
 
@@ -110,6 +110,15 @@ The token is full control of the machine: with it a caller can start training ru
 
 What the training process can see of the token: it cannot get it from its own environment (the runner removes `RUNNER_TOKEN`, `HF_WRITE_TOKEN` and `RUNPOD_API_KEY` there), but everything in the container runs as root, and Linux keeps the environment a process started with. `RUNNER_TOKEN` and `RUNPOD_API_KEY` are still in `/proc/1/environ` (the entrypoint, which RunPod started with them), in the `timeout` process, and in the runner's own start-up environment block. So code running in the training process, for instance code a model or config makes it run, could read them. The scrub covers accidental dumps (a printed environment, a crash report) only. Closing that gap needs the training child to run as a non-root user, which is not done here because the ostris image and its caches expect root. `HF_TOKEN` is passed to the training process on purpose.
 
+### Before the first rented machine
+
+Nothing has run on RunPod yet, and the app cannot yet end its own pods. Until it can, do this in order:
+
+1. **Test on a cheap CPU machine first.** Rent the smallest CPU pod, run `shutdown.py` there once in each mode and see the pod disappear, both through the REST call and through `runpodctl` (ss-m10t10). Both calls are unverified.
+2. **Keep a small balance with auto top-up off.** The prepaid balance is the last limit on what a forgotten pod can cost.
+3. **Watch the first GPU run** and confirm the pod is gone after the limit (3 hours at most, 30 minutes idle).
+4. **The app-side cleanup (ss-m10t4) is the missing second line of defence.** It ends any pod of ours that is past its deadline. Until it exists, nothing automatic stands behind the runner's limits and the two shut-down calls, so do not leave a run unattended.
+
 ### Build the image
 
 ```bash
@@ -118,7 +127,7 @@ pixel-studio-comfy cloud trainer build               # build ghcr.io/bunnyufo-la
 pixel-studio-comfy cloud trainer build --push        # also push (needs `docker login ghcr.io`)
 ```
 
-`--base IMAGE` changes the base (default `ostris/aitoolkit:0.13.23`, about 6.6 GB to download); `--tag IMAGE` names the result.
+`--base IMAGE` changes the base (default `ostris/aitoolkit:0.13.23@sha256:35e46171bc6def5e745fc478befec2ab0a0551fe78ce3d5f76cb22271795bb52`, pinned by digest, about 6.6 GB to download); `--tag IMAGE` names the result.
 The image is published as a public GHCR package, so RunPod needs no registry login. It holds no token and no key: the token
 and the limits come as environment variables when the pod is rented.
 

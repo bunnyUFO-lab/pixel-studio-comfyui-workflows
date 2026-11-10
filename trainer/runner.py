@@ -87,7 +87,7 @@ TOTAL_MAX = 1 << 30
 CHUNK = 1 << 20
 # Time and idle limits (set by configure())
 TIME_LIMIT_S = 0.0
-TIME_LIMIT_MAX_S = 86400.0
+TIME_LIMIT_MAX_S = 10800.0
 IDLE_LIMIT_S = 0.0
 WATCH_EVERY_S = 5.0
 DEADLINE = None                       # epoch seconds, or None
@@ -795,7 +795,7 @@ def configure():
     if TOKEN and not TOKEN_RE.match(TOKEN):
         sys.stderr.write(f"runner: RUNNER_TOKEN must be at least {TOKEN_MIN} characters from A-Z a-z 0-9 _ -\n")
         raise SystemExit(2)
-    TIME_LIMIT_MAX_S = env_number("RUNNER_TIME_LIMIT_MAX_S", 86400.0)
+    TIME_LIMIT_MAX_S = env_number("RUNNER_TIME_LIMIT_MAX_S", 10800.0)
     TIME_LIMIT_S = env_number("RUNNER_TIME_LIMIT_S", 10800.0 if TOKEN else 0.0)
     IDLE_LIMIT_S = env_number("RUNNER_IDLE_LIMIT_S", 1800.0 if TOKEN else 0.0)
     WATCH_EVERY_S = min(env_number("RUNNER_WATCH_EVERY_S", 5.0) or 5.0, 60.0)

@@ -13,7 +13,7 @@ from psc.cloud_modal import say
 from psc.stack import CliError, run
 
 REGISTRY_IMAGE = "ghcr.io/bunnyufo-lab/psc-trainer"
-DEFAULT_BASE = "ostris/aitoolkit:0.13.23"
+DEFAULT_BASE = "ostris/aitoolkit:0.13.23@sha256:35e46171bc6def5e745fc478befec2ab0a0551fe78ce3d5f76cb22271795bb52"
 DOCKERFILE = "trainer/cloud/Dockerfile"
 NOT_LOGGED_IN = re.compile(r"denied|unauthorized|authentication required|requested access", re.I)
 
@@ -30,7 +30,8 @@ def build_plan(stack, base=None, tag=None, push=False):
     if tag:
         tags = [tag]
     else:
-        ref = base.rsplit(":", 1)[1] if ":" in base.rsplit("/", 1)[-1] else "latest"
+        named = base.split("@", 1)[0]          # drop a @sha256:... digest; the tag is what names the result
+        ref = named.rsplit(":", 1)[1] if ":" in named.rsplit("/", 1)[-1] else "latest"
         tags = ["%s:aitk-%s-%s" % (REGISTRY_IMAGE, ref, git_sha(stack)), REGISTRY_IMAGE + ":latest"]
     build = ["docker", "build", "-f", DOCKERFILE, "--build-arg", "BASE=" + base]
     for t in tags:

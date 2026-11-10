@@ -8,7 +8,7 @@ set -u
 unset RUNNER_ALLOW_OPEN
 
 # The coreutils timeout is the backstop if the runner itself hangs.
-timeout --signal=TERM --kill-after=60 $(( ${RUNNER_TIME_LIMIT_MAX_S:-86400} + 600 )) python -u /runner/runner.py &
+timeout --signal=TERM --kill-after=60 $(( ${RUNNER_TIME_LIMIT_MAX_S:-10800} + 600 )) python -u /runner/runner.py &
 child=$!
 signalled=0
 trap 'signalled=1; kill -TERM "$child" 2>/dev/null' TERM

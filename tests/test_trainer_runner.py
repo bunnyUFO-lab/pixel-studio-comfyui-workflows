@@ -222,6 +222,18 @@ def test_bind_and_config():
         p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="0")
         code = wait_exit(p, 10)
         check(code == 2, f"config: a token with the time limit switched off exits 2 (code {code})")
+        check(runner.TIME_LIMIT_MAX_S == 10800.0, f"config: the default ceiling is 3 hours ({runner.TIME_LIMIT_MAX_S})")
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="10801")
+        code = wait_exit(p, 10)
+        check(code == 2 and "RUNNER_TIME_LIMIT_MAX_S" in box.logs(p), f"config: 3 h + 1 s with no RUNNER_TIME_LIMIT_MAX_S exits 2 (code {code})")
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="10800")
+        up = box.wait_up(p)
+        check(up and p.poll() is None, "config: a limit of exactly 3 h starts")
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="10801", RUNNER_TIME_LIMIT_MAX_S="14400")
+        up = box.wait_up(p)
+        check(up and p.poll() is None, "config: a higher ceiling works when RUNNER_TIME_LIMIT_MAX_S is set at creation")
+        entry = (Path(ROOT) / "trainer" / "cloud" / "entrypoint.sh").read_text(encoding="utf-8")
+        check("RUNNER_TIME_LIMIT_MAX_S:-10800" in entry, "config: the hung-runner backstop defaults to 3 h + 10 min")
     finally:
         box.close()
 
@@ -787,16 +799,24 @@ def test_time_and_idle_limits():
         box.close()
     box = Box()
     try:
-        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3600", RUNNER_IDLE_LIMIT_S="2")
+        # A 5 s idle limit and a request every second: a busy PC would have to stall this test for 4 s to lose the race
+        # (with a 2 s limit a 1 s stall was enough). The check is as strict as before: the runner must still be up after
+        # more than the idle limit has passed, and must stop after the requests stop.
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3600", RUNNER_IDLE_LIMIT_S="5")
         box.wait_up(p)
         t0 = time.time()
-        while time.time() - t0 < 4.5:
-            s, _, _ = call(p, "GET", "/jobs", token=TOKEN)
-            call(p, "GET", "/jobs", token=WRONG)                  # a refused request does not count
+        refused = None
+        while time.time() - t0 < 7.5:
+            try:
+                call(p, "GET", "/jobs", token=TOKEN)
+                call(p, "GET", "/jobs", token=WRONG)                  # a refused request does not count
+            except OSError as e:                                      # the runner went away: record it, do not abort the file
+                refused = e
+                break
             time.sleep(1)
-        check(p.poll() is None, "idle: an authenticated GET /jobs every second keeps it up for 4 s")
-        code = wait_exit(p, 12)
-        check(code == 3, f"idle: ... and it stops about 2 s after the last request ({code})")
+        check(refused is None and p.poll() is None, f"idle: an authenticated GET /jobs every second keeps it up for 7 s, past the 5 s limit ({refused!r})")
+        code = wait_exit(p, 20)
+        check(code == 3, f"idle: ... and it stops about 5 s after the last request ({code})")
     finally:
         box.close()
     box = Box()

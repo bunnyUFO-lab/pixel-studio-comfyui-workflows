@@ -9,14 +9,16 @@ Prints only the mode and the HTTP status, never the key or a response body.
 
 Two ways to end the machine, tried one after the other: the REST call, then `runpodctl` (RUNNER_RUNPODCTL, default
 `runpodctl`, which ships in RunPod pods and uses the pod's own key from its environment; nothing secret goes on a
-command line). If both fail this script does NOT exit: it keeps trying every RUNNER_SHUTDOWN_HOLD_S seconds (default 60)
-for RUNNER_SHUTDOWN_HOLD_FOR_S (default 3600), then sleeps for ever. A container that exits is restarted by RunPod and
-would loop (and bill) for ever; one that never exits cannot. The same holds for a missing key or pod id. The app is
+command line). `runpodctl` is tried in its current form (`runpodctl pod remove <id>`, `runpodctl pod stop <id>`) and, if
+that fails, in the legacy form (`runpodctl remove pod <id>`, `runpodctl stop pod <id>`). If both methods fail this script
+does NOT exit: it keeps trying for ever, first after RUNNER_SHUTDOWN_HOLD_S seconds (default 60), then with the wait
+doubling up to RUNNER_SHUTDOWN_HOLD_MAX_S (default 300). A container that exits is restarted by RunPod and would loop
+(and bill) for ever; one that never exits cannot, and retries cost nothing next to a GPU hour. The same holds for a missing key or pod id. The app is
 the third line of defence (it ends any pod of ours that is past its deadline). RUNNER_SHUTDOWN_HOLD=0 turns the holding
 off (the script then exits 1 as soon as the tries are used up; for tests and a local `docker run`).
 
 UNVERIFIED: the RunPod calls below (DELETE /pods/{id} to terminate, POST /pods/{id}/stop to stop, and
-`runpodctl remove pod <id>` / `runpodctl stop pod <id>`) were written from memory and have not run against RunPod.
+`runpodctl pod remove <id>` / `runpodctl pod stop <id>` and the legacy forms) were written from memory and have not run against RunPod.
 ss-m10t10 and ss-m10t4 check them against RunPod's docs once a key exists.
 """
 import os
@@ -64,10 +66,16 @@ def call_ctl(mode, pod):
     if not path:
         return None
     verb = "remove" if mode == "runpod-terminate" else "stop"
-    try:
-        return subprocess.run([path, verb, "pod", pod], capture_output=True, timeout=60).returncode
-    except (OSError, subprocess.SubprocessError):
-        return None
+    code = None
+    # current form first, the legacy verb-first form second (it may be dropped by a newer runpodctl)
+    for argv in ([path, "pod", verb, pod], [path, verb, "pod", pod]):
+        try:
+            code = subprocess.run(argv, capture_output=True, timeout=60).returncode
+        except (OSError, subprocess.SubprocessError):
+            code = None
+        if code == 0:
+            return 0
+    return code
 
 
 def try_both(mode, base, pod, key, label):
@@ -79,6 +87,11 @@ def try_both(mode, base, pod, key, label):
     code = call_ctl(mode, pod)
     print(f"shutdown: mode {mode}, {label}, runpodctl {'not found' if code is None else 'exit ' + str(code)}", flush=True)
     return code == 0
+
+
+def backoff(n, first, cap):
+    """Seconds to wait before hold retry number n (1, 2, ...): `first`, doubling, never above `cap` (and never below `first`)."""
+    return min(first * (2 ** min(n - 1, 30)), max(cap, first))
 
 
 def hold(message):
@@ -116,16 +129,14 @@ def main():
     if os.environ.get("RUNNER_SHUTDOWN_HOLD", "1") == "0":
         print("shutdown: the machine was not ended; end it in the RunPod console", file=sys.stderr)
         return 1
-    # Both methods failed: keep trying, then sit still. Never exit.
-    every, until, n = number("RUNNER_SHUTDOWN_HOLD_S", 60), time.time() + number("RUNNER_SHUTDOWN_HOLD_FOR_S", 3600), 0
+    # Both methods failed: keep trying for ever, with a capped back-off. Never exit.
+    first, cap, n = number("RUNNER_SHUTDOWN_HOLD_S", 60), number("RUNNER_SHUTDOWN_HOLD_MAX_S", 300), 0
     print("shutdown: the machine was not ended; trying again until it is (this script does not exit)", file=sys.stderr, flush=True)
-    while time.time() < until:
-        time.sleep(every)
+    while True:
         n += 1
+        time.sleep(backoff(n, first, cap))
         if try_both(mode, base, pod, key, f"hold try {n}"):
             return 0
-    return hold("shutdown: still not ended after the retry window")
-
 
 if __name__ == "__main__":
     sys.exit(main())

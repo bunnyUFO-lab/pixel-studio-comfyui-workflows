@@ -5,6 +5,7 @@ trainer/cloud/shutdown.py against a fake RunPod on 127.0.0.1 (no network beyond 
 """
 import contextlib
 import http.server
+import importlib.util
 import io
 import os
 import re
@@ -85,17 +86,28 @@ def finish(proc, secs=5):
 NL, Q = chr(10), chr(34)
 
 
-def fake_runpodctl(folder, exit_code):
-    """An executable that records its arguments in <folder>/ctl-args.txt and exits with exit_code."""
+def fake_runpodctl(folder, exit_code, only_legacy=False):
+    """An executable that records its arguments in <folder>/ctl-args.txt and exits with exit_code.
+    With only_legacy it appends one line per call and fails (exit 1) when the first argument is `pod` (a runpodctl without
+    the current command form)."""
     log = os.path.join(folder, "ctl-args.txt")
+    redirect = ">>" if only_legacy else ">"
+    if only_legacy and os.path.exists(log):
+        os.remove(log)
     if os.name == "nt":
         path = os.path.join(folder, "fakectl.cmd")
         with open(path, "w") as f:
-            f.write("@echo off" + NL + "echo %* > " + Q + log + Q + NL + "exit /b " + str(exit_code) + NL)
+            f.write("@echo off" + NL + "echo %* " + redirect + " " + Q + log + Q + NL)
+            if only_legacy:
+                f.write("if " + Q + "%1" + Q + "==" + Q + "pod" + Q + " exit /b 1" + NL)
+            f.write("exit /b " + str(exit_code) + NL)
     else:
         path = os.path.join(folder, "fakectl.sh")
         with open(path, "w") as f:
-            f.write("#!/bin/sh" + NL + "echo " + Q + "$@" + Q + " > " + Q + log + Q + NL + "exit " + str(exit_code) + NL)
+            f.write("#!/bin/sh" + NL + "echo " + Q + "$@" + Q + " " + redirect + " " + Q + log + Q + NL)
+            if only_legacy:
+                f.write("[ " + Q + "$1" + Q + " = pod ] && exit 1" + NL)
+            f.write("exit " + str(exit_code) + NL)
         os.chmod(path, 0o755)
     return path, log
 
@@ -105,7 +117,7 @@ def run():
     # ---- cloud trainer build --dry-run
     code, out, err = main_capture(["cloud", "trainer", "build", "--dry-run"])
     lines = out.strip().splitlines()
-    m = re.fullmatch(r"docker build -f trainer/cloud/Dockerfile --build-arg BASE=ostris/aitoolkit:0\.13\.23 "
+    m = re.fullmatch(r"docker build -f trainer/cloud/Dockerfile --build-arg BASE=ostris/aitoolkit:0\.13\.23@sha256:[0-9a-f]{64} "
                      r"-t ghcr\.io/bunnyufo-lab/psc-trainer:aitk-0\.13\.23-([0-9a-f]{4,40}|dev) "
                      r"-t ghcr\.io/bunnyufo-lab/psc-trainer:latest \.", lines[0] if lines else "")
     check(code == 0 and m and len(lines) == 1, f"build --dry-run prints the build line with both tags and nothing else ({lines})")
@@ -171,11 +183,16 @@ def run():
             FakeRunPod.seen.clear()
             code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_RUNPODCTL=ctl, **env)
             args = open(log).read().split() if os.path.exists(log) else []
-            check(code == 0 and args == ["remove", "pod", POD] and KEY not in text,
-                  f"second method: when the REST call fails, `runpodctl remove pod <id>` ends the machine, no key on its command line ({args})")
+            check(code == 0 and args == ["pod", "remove", POD] and KEY not in text,
+                  f"second method: when the REST call fails, `runpodctl pod remove <id>` ends the machine, no key on its command line ({args})")
             code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-stop", RUNNER_RUNPODCTL=ctl, **env)
             args = open(log).read().split()
-            check(code == 0 and args == ["stop", "pod", POD], f"second method: stop mode uses `runpodctl stop pod <id>` ({args})")
+            check(code == 0 and args == ["pod", "stop", POD], f"second method: stop mode uses `runpodctl pod stop <id>` ({args})")
+            # legacy form: the current form is unknown to this runpodctl, the legacy one works
+            ctl, log = fake_runpodctl(tmp, 0, only_legacy=True)
+            code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_RUNPODCTL=ctl, **env)
+            lines = [l.strip() for l in open(log).read().splitlines()]
+            check(code == 0 and lines == ["pod remove " + POD, "remove pod " + POD], f"second method: when `pod remove` fails, the legacy `runpodctl remove pod <id>` is tried next ({lines})")
             ctl, log = fake_runpodctl(tmp, 1)
             code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_RUNPODCTL=ctl, **env)
             check(code == 1, f"second method: both failing with RUNNER_SHUTDOWN_HOLD=0 exits 1 ({code})")
@@ -193,9 +210,17 @@ def run():
         check(still and n > 3, f"hold: with both methods failing it does not exit and keeps retrying ({n} requests, still running: {still})")
         check(code == 0, f"hold: ... and ends the machine when RunPod answers again (exit {code})")
         FakeRunPod.status = 500
-        proc = start_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_SHUTDOWN_HOLD_FOR_S="1")
-        still, text = finish(proc, 5)
-        check(still and "hold try" in text and KEY not in text, "hold: after the retry window it sleeps instead of exiting (never exits)")
+        # the old one-hour window is gone: RUNNER_SHUTDOWN_HOLD_FOR_S has no effect, retries go on and the wait is capped
+        proc = start_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_SHUTDOWN_HOLD_FOR_S="1", RUNNER_SHUTDOWN_HOLD_S="0.1", RUNNER_SHUTDOWN_HOLD_MAX_S="0.3")
+        still, text = finish(proc, 6)
+        tries = len(re.findall(r"hold try \d+, HTTP", text))
+        check(still and tries >= 12 and KEY not in text, f"hold: retries go on for ever, past a 1 s 'window', with the wait capped ({tries} hold tries in 6 s, still running: {still})")
+        spec = importlib.util.spec_from_file_location("shutdown_mod", SHUTDOWN)
+        sm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sm)
+        waits = [sm.backoff(n, 60, 300) for n in range(1, 9)]
+        check(waits == [60, 120, 240, 300, 300, 300, 300, 300] and sm.backoff(10 ** 6, 60, 300) == 300 and sm.backoff(1, 400, 300) == 400,
+              f"hold: back-off doubles from 60 s and stays at the 300 s cap ({waits})")
         FakeRunPod.status = 200
         for label, bad in (("a missing RUNPOD_API_KEY", {"RUNPOD_API_KEY": ""}), ("a bad pod id", {"RUNPOD_POD_ID": "../x"}),
                            ("an unknown mode", {"RUNNER_ON_EXIT": "bogus"})):

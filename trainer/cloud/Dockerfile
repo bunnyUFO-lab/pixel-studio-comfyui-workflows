@@ -1,6 +1,6 @@
 # The style trainer for a rented machine: ostris ai-toolkit plus trainer/runner.py. No token and no keys in the
 # image: the token comes as a pod environment variable at rent time. Build: pixel-studio-comfy cloud trainer build
-ARG BASE=ostris/aitoolkit:0.13.23
+ARG BASE=ostris/aitoolkit:0.13.23@sha256:35e46171bc6def5e745fc478befec2ab0a0551fe78ce3d5f76cb22271795bb52
 FROM ${BASE}
 COPY trainer/runner.py trainer/cloud/entrypoint.sh trainer/cloud/shutdown.py /runner/
 ENV RUNNER_HOST=0.0.0.0 RUNNER_PORT=8675 CONFIG_ROOT=/workspace/configs OUTPUT_ROOT=/workspace/output \
