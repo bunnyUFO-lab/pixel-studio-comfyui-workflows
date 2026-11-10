@@ -22,6 +22,8 @@ import sys
 import tempfile
 import time
 
+ENDPOINT = "https://huggingface.co"   # fixed in code: the write token only ever goes to this host
+TEST_ENDPOINT = None                  # tests set this in process; no environment variable, no stdin field can change the host
 RETRY_WAITS = (10, 30, 90)            # seconds before the 2nd, 3rd and 4th try (a module constant so tests shorten it)
 NO_RETRY_STATUS = (401, 403, 404)     # the token or the repository is wrong: trying again cannot help
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
@@ -70,6 +72,42 @@ def field(obj, key):
 
 
 # ----------------------------------------------------------------- upload
+def retried(call, sleep):
+    """-> (value, None) or (None, error text): the call retried like the commit, no retry on 401, 403 or 404."""
+    tries = len(RETRY_WAITS) + 1
+    for attempt in range(tries):
+        try:
+            return call(), None
+        except Exception as e:                                          # noqa: BLE001
+            if status_of(e) in NO_RETRY_STATUS or attempt == tries - 1:
+                return None, describe(e)
+            sleep(RETRY_WAITS[attempt])
+
+
+def preflight(spec, api, sleep):
+    """Before anything is sent: the token must be a fine-grained one and the repository private, unless the machine was
+    created with the explicit setting that allows it (spec allow_classic / allow_public, which the runner reads from
+    its environment at start). -> None when the target may receive files, else the error text for every file."""
+    repo = spec["repo"]
+    who, err = retried(api.whoami, sleep)
+    if err:
+        return err if status_of_text(err) else "token check failed: " + err
+    role = field(field(field(who, "auth"), "accessToken"), "role")
+    if role != "fineGrained" and not spec.get("allow_classic"):
+        return "refused: only a fine-grained token is accepted on a rented machine"
+    info, err = retried(lambda: api.model_info(repo_id=repo), sleep)
+    if err:
+        return err if status_of_text(err) else "repository check failed: " + err
+    if field(info, "private") is not True and not spec.get("allow_public"):
+        return "refused: the repository is not private"
+    return None
+
+
+def status_of_text(text):
+    """True when describe()'s text ends in an HTTP status (the runner reads 401, 403 and 404 as a refusal)."""
+    return bool(re.search(r" [0-9]{3}\Z", text))
+
+
 def run_upload(spec, api, out, sleep=time.sleep):
     """One commit with every file of the spec, retried, then checked against the sha256 and size we were given.
     Prints one line per file."""
@@ -81,6 +119,10 @@ def run_upload(spec, api, out, sleep=time.sleep):
         for f in files:
             out.line({"path": f["path"], "state": "failed", "error": error})
 
+    refusal = preflight(spec, api, sleep)
+    if refusal:
+        fail_all(refusal)
+        return
     from huggingface_hub import CommitOperationAdd
     info = None
     for attempt in range(tries):
@@ -120,7 +162,9 @@ def run_upload(spec, api, out, sleep=time.sleep):
             continue
         lfs = field(p, "lfs")
         lfs_sha = field(lfs, "sha256") if lfs else None
-        if field(p, "size") != f["size"] or (lfs_sha is not None and lfs_sha != f["sha256"]):
+        if f["path"].lower().endswith(".safetensors") and not lfs_sha:       # a library change must not weaken the check
+            out.line({"path": f["path"], "state": "failed", "error": "no checksum from the hub"})
+        elif field(p, "size") != f["size"] or (lfs_sha is not None and lfs_sha != f["sha256"]):
             out.line({"path": f["path"], "state": "failed", "error": "checksum differs"})
         else:
             out.line({"path": f["path"], "state": "done", "commit": oid})
@@ -213,13 +257,13 @@ def run_selftest(spec, api, download, out, read_api=None):
 # ----------------------------------------------------------------- real library
 def real_api(token, endpoint=None):
     from huggingface_hub import HfApi
-    return HfApi(token=token, endpoint=endpoint or os.environ.get("HF_ENDPOINT") or "https://huggingface.co")
+    return HfApi(token=token, endpoint=endpoint or TEST_ENDPOINT or ENDPOINT)
 
 
 def real_download(repo, filename, revision, token, local_dir):
     from huggingface_hub import hf_hub_download
     return hf_hub_download(repo_id=repo, filename=filename, revision=revision, token=token, local_dir=local_dir,
-                           endpoint=os.environ.get("HF_ENDPOINT") or "https://huggingface.co")
+                           endpoint=TEST_ENDPOINT or ENDPOINT)
 
 
 def harden_env():
@@ -227,7 +271,8 @@ def harden_env():
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
     os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
-    os.environ.pop("HF_TOKEN", None)
+    for key in ("HF_TOKEN", "HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE"):
+        os.environ.pop(key, None)
 
 
 def valid_upload_spec(spec):

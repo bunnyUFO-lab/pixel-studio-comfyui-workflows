@@ -36,6 +36,12 @@ def check(cond, msg):
     print(("PASS " if cond else "FAIL ") + msg)
 
 
+def sft(tag, n=200):
+    """A whole safetensors file: 8-byte header length, a JSON header with one tensor of n bytes, n bytes of data."""
+    head = json.dumps({"w": {"dtype": "U8", "shape": [n], "data_offsets": [0, n]}}).encode()
+    return len(head).to_bytes(8, "little") + head + (str(tag).encode() * n)[:n]
+
+
 def alive(pid):
     """Is the process there? (os.kill(pid, 0) would END it on Windows.)"""
     if os.name == "nt":
@@ -60,10 +66,19 @@ class HfHubHTTPError(Exception):
 class FakeApi:
     """Records its calls; can fail create_commit with given statuses first; can answer another size or sha256."""
 
-    def __init__(self, fail=(), size_delta=0, lfs_sha=None, no_lfs=False, leak=""):
+    def __init__(self, fail=(), size_delta=0, lfs_sha=None, no_lfs=False, leak="", private=True, role="fineGrained"):
         self.calls, self.fail, self.size_delta, self.lfs_sha, self.no_lfs, self.leak = [], list(fail), size_delta, lfs_sha, no_lfs, leak
+        self.private, self.role = private, role
         self.commits = []
         self.local = {}
+
+    def whoami(self):
+        self.calls.append(("whoami",))
+        return {"name": "owner", "auth": {"type": "access_token", "accessToken": {"role": self.role}}}
+
+    def model_info(self, repo_id):
+        self.calls.append(("model_info", repo_id))
+        return types.SimpleNamespace(private=self.private)
 
     def create_commit(self, repo_id, repo_type, revision, operations, commit_message):
         self.calls.append(("create_commit", repo_id, repo_type, revision, [o.path_in_repo for o in operations], commit_message))
@@ -90,18 +105,11 @@ class FakeHub(FakeApi):
     """What selftest talks to: refs, branches, whoami, model_info, a store of uploaded bytes per branch."""
 
     def __init__(self, private=True, role="fineGrained", download_fails=False, main="a" * 40, **kw):
-        super().__init__(**kw)
-        self.private, self.role, self.download_fails = private, role, download_fails
+        super().__init__(private=private, role=role, **kw)
+        self.download_fails = download_fails
         self.branches = {"main": main}
         self.store = {}
         self.main = main
-
-    def whoami(self):
-        return {"name": "owner", "auth": {"type": "access_token", "accessToken": {"role": self.role}}}
-
-    def model_info(self, repo_id):
-        self.calls.append(("model_info", repo_id))
-        return types.SimpleNamespace(private=self.private)
 
     def list_repo_refs(self, repo_id, repo_type):
         return types.SimpleNamespace(branches=[types.SimpleNamespace(name=n, target_commit=c) for n, c in self.branches.items()])
@@ -189,8 +197,9 @@ def test_hf_upload_in_process():
         lines, _ = upload_lines(api, files)
         check(all(x["state"] == "failed" and x["error"] == "checksum differs" for x in lines), "checks: another lfs.sha256 -> failed: checksum differs")
         api = FakeApi(no_lfs=True)
-        lines, _ = upload_lines(api, files)
-        check(all(x["state"] == "done" for x in lines), "checks: no lfs block (a small file) -> the size alone decides")
+        small = [dict(f, path=f["path"].replace(".safetensors", ".json")) for f in files]
+        lines, _ = upload_lines(api, small)
+        check(all(x["state"] == "done" for x in lines), "checks: no lfs block on a small non-checkpoint file -> the size alone decides")
         # the token never reaches an output line: the exception text holds it, so does a path (the last guard redacts it)
         leaky = [dict(files[0], path="z-image-turbo/job/" + HF_TOKEN + ".safetensors")]
         api = FakeApi(fail=[500, 500, 500, 500], leak=HF_TOKEN)
@@ -266,7 +275,7 @@ def test_selftest_in_process():
 
 # ================================================================== runner end to end
 TRAINER = r'''
-import os, sys, time
+import json, os, sys, time
 from pathlib import Path
 cfg = sys.argv[-1]
 name = os.path.splitext(os.path.basename(cfg))[0]
@@ -277,7 +286,9 @@ out = Path(os.environ["FAKE_OUT"]) / name
 print("hf-token-in-env: " + ("yes" if "HF_WRITE_TOKEN" in os.environ else "no"), flush=True)
 def save(step, final=False):
     f = out / ("%s.safetensors" % name if final else "%s_%09d.safetensors" % (name, step))
-    f.write_bytes(("%s-%s" % (name, step)).encode() * 200)
+    n = 200
+    head = json.dumps({"w": {"dtype": "U8", "shape": [n], "data_offsets": [0, n]}}).encode()
+    f.write_bytes(len(head).to_bytes(8, "little") + head + (("%s-%s" % (name, step)).encode() * n)[:n])
     (out / "samples" / ("1700000%d_%09d_0.jpg" % (step, step))).write_bytes(b"\xff\xd8\xff\xe0" + b"s" * 50 + bytes([step % 250]))
 for i in range(1, steps + 1):
     print("%s: %3d%%|#####     | %d/%d [00:0%d<00:01, 1.00s/it, lr: 1.0e-04 loss: 4.1e-01]" % (name, 100 * i // steps, i, steps, i % 10), flush=True)
@@ -299,7 +310,7 @@ mode = os.environ.get("FAKE_UP_MODE", "ok")
 tok = spec["token"]
 rec = {"argv": sys.argv[1:], "env_keys": sorted(os.environ), "token_in_env_values": any(tok in v for v in os.environ.values()),
        "token_in_argv": any(tok in a for a in sys.argv), "token_on_stdin": bool(tok), "paths": [f["path"] for f in spec["files"]],
-       "repo": spec["repo"], "message": spec["message"]}
+       "repo": spec["repo"], "message": spec["message"], "allow_public": spec.get("allow_public"), "allow_classic": spec.get("allow_classic")}
 with open(os.environ["FAKE_UP_LOG"], "a") as f:
     f.write(json.dumps(rec) + "\n")
 if mode == "sleep":
@@ -313,6 +324,8 @@ for f in spec["files"]:
     p = f["path"]
     if mode == "refuse":
         print(json.dumps({"path": p, "state": "failed", "error": "HfHubHTTPError 401"}), flush=True)
+    elif mode == "refuse_private":
+        print(json.dumps({"path": p, "state": "failed", "error": "refused: the repository is not private"}), flush=True)
     elif mode == "leak":
         print(tok, flush=True)
         sys.stderr.write(tok + "\n")
@@ -516,9 +529,9 @@ def test_caps_and_safety():
         cfg.write_text(json.dumps(T.with_process(box, "capjob", model={"name_or_path": MODEL})))
         up = runner.Uploader(HF_TOKEN, REPO)
         up.begin(job)
-        (out / "capjob_000000001.safetensors").write_bytes(b"ok" * 100)
-        (out / "bad name.safetensors").write_bytes(b"x" * 10)
-        (out / "capjob_big.safetensors").write_bytes(b"B" * (3 << 20))
+        (out / "capjob_000000001.safetensors").write_bytes(sft("ok"))
+        (out / "bad name.safetensors").write_bytes(sft("x"))
+        (out / "capjob_big.safetensors").write_bytes(sft("B", 3 << 20))
         (out / "samples" / "s1.jpg").write_bytes(b"\xff\xd8\xff" + b"s" * 20)
         (out / "samples" / "notes.txt").write_text("not a sample")
         outside = box.dir / "outside.safetensors"
@@ -546,7 +559,7 @@ def test_caps_and_safety():
         sent = [x for c in box.calls() for x in c["paths"]]
         check(all("bad name" not in x and "big" not in x and "linked" not in x for x in sent), f"caps: none of the skipped files was sent ({sent})")
         # a checkpoint deleted between passes
-        (out / "capjob_000000002.safetensors").write_bytes(b"two" * 100)
+        (out / "capjob_000000002.safetensors").write_bytes(sft("two"))
         up.run_pass(up.runs["capjob"], final=False)
         (out / "capjob_000000002.safetensors").unlink()
         up.run_pass(up.runs["capjob"], final=False)
@@ -567,8 +580,8 @@ def test_caps_and_safety():
         job3 = types.SimpleNamespace(name="capjob3", config_path=str(cfg), output_dir=out3)
         up3 = runner.Uploader(HF_TOKEN, REPO)
         up3.begin(job3)
-        (out3 / "capjob3_000000001.safetensors").write_bytes(b"1" * 50)
-        (out3 / "capjob3.safetensors").write_bytes(b"2" * 50)
+        (out3 / "capjob3_000000001.safetensors").write_bytes(sft("1"))
+        (out3 / "capjob3.safetensors").write_bytes(sft("2"))
         up3.run_pass(up3.runs["capjob3"], final=False)
         (out3 / "capjob3_000000001.safetensors").unlink()
         up3.run_pass(up3.runs["capjob3"], final=True)
@@ -583,7 +596,7 @@ def test_caps_and_safety():
             out2.mkdir()
             job2 = types.SimpleNamespace(name="capjob2", config_path=str(cfg), output_dir=out2)
             for i in range(5):
-                (out2 / f"capjob2_{i:09d}.safetensors").write_bytes(b"c%d" % i)
+                (out2 / f"capjob2_{i:09d}.safetensors").write_bytes(sft("c%d" % i, 20))
             up.begin(job2)
             up.run_pass(up.runs["capjob2"], final=True)
             states = [f["state"] for f in up.status("capjob2")["files"]]
@@ -658,8 +671,8 @@ def test_limit_mid_upload():
         code = T.wait_exit(p, 20)
         st = json.loads((box.output / "fastlimit" / "upload_status.json").read_text(encoding="utf-8"))
         cks = [f for f in st["files"] if f["file"].endswith(".safetensors")]
-        check(code == 3 and st["state"] == "done" and len(cks) == 2 and all(f["state"] == "done" for f in cks),
-              f"limit: with a fast uploader the status is done before exit 3 ({code}, {st['state']})")
+        check(code == 3 and st["state"] == "failed" and "final checkpoint" in (st["error"] or "") and len(cks) == 2 and all(f["state"] == "done" for f in cks),
+              f"limit: with a fast uploader both step saves are sent, and without a final file the status is failed and says so ({code}, {st['state']}, {st['error']})")
     finally:
         box.close()
 
@@ -683,6 +696,351 @@ def test_idle_with_upload_in_flight():
         box.close()
 
 
+
+# ================================================================== review fixes (PR 25 review, 10 Nov 2026)
+def pass_box(box, name="rv", **uploader_env):
+    """An Uploader in process with the fake uploader as its child, and a job folder for it."""
+    runner.UPLOAD_CMD = json.dumps([sys.executable, str(box.uploader)])
+    runner.UPLOAD_SETTLE_S = 0.0
+    runner.CONFIG_ROOT = box.configs
+    os.environ.update(FAKE_UP_LOG=str(box.uplog), FAKE_UP_MODE="ok", **uploader_env)
+    out = box.output / name
+    (out / "samples").mkdir(parents=True)
+    box.configs.mkdir(parents=True, exist_ok=True)
+    cfg = box.configs / f"{name}.json"
+    cfg.write_text(json.dumps(T.with_process(box, name, model={"name_or_path": MODEL})))
+    job = types.SimpleNamespace(name=name, config_path=str(cfg), output_dir=out)
+    up = runner.Uploader(HF_TOKEN, REPO)
+    up.begin(job)
+    return up, job, out
+
+
+def restore(saved, box):
+    for k, v in saved.items():
+        setattr(runner, k, v)
+    for k in ("FAKE_UP_LOG", "FAKE_UP_MODE", "FAKE_UP_SLOW_S"):
+        os.environ.pop(k, None)
+    box.close()
+
+
+SAVED = ("UPLOAD_CMD", "UPLOAD_SETTLE_S", "UPLOAD_FILE_MAX", "UPLOAD_RUN_MAX", "CONFIG_ROOT", "UPLOAD_PASS_TIMEOUT_S")
+
+
+def test_m1_final_pass_after_a_pass_in_flight():
+    import threading
+    saved = {k: getattr(runner, k) for k in SAVED}
+    box = UBox()
+    try:
+        up, job, out = pass_box(box, "m1")
+        run = up.runs["m1"]
+        (out / "m1_000000001.safetensors").write_bytes(sft("one"))
+        up.run_pass(run, final=False)                              # first sight
+        os.environ.update(FAKE_UP_MODE="slow", FAKE_UP_SLOW_S="2")
+        t = threading.Thread(target=up.run_pass, args=(run,), kwargs={"final": False})
+        t.start()
+        end = time.time() + 10
+        while not up.busy() and time.time() < end:
+            time.sleep(0.02)
+        (out / "m1.safetensors").write_bytes(sft("final"))        # the job ends while that slow pass is in flight
+        up.finish(job)
+        t.join(10)
+        st = up.status("m1")
+        files = {f["file"]: f["state"] for f in st["files"]}
+        check(st["state"] == "done" and files.get("m1.safetensors") == "done" and files.get("m1_000000001.safetensors") == "done",
+              f"M1: the job ends while a pass is in flight -> a final pass still runs, the final LoRA is sent, the state leaves waiting ({st['state']}, {files})")
+    finally:
+        restore(saved, box)
+
+
+def test_m2_done_needs_the_final_checkpoint():
+    saved = {k: getattr(runner, k) for k in SAVED}
+    box = UBox()
+    try:
+        up, job, out = pass_box(box, "m2a")
+        up.run_pass(up.runs["m2a"], final=True)                    # nothing at all was written
+        st = up.status("m2a")
+        check(st["state"] == "failed" and "m2a.safetensors" in (st["error"] or ""), f"M2: a run with no checkpoint is failed and the error names the final file ({st['state']}, {st['error']})")
+        up, job, out = pass_box(box, "m2b")
+        (out / "m2b_000000001.safetensors").write_bytes(sft("s"))
+        up.run_pass(up.runs["m2b"], final=False)
+        up.run_pass(up.runs["m2b"], final=True)
+        st = up.status("m2b")
+        check(st["state"] == "failed" and "final checkpoint" in (st["error"] or ""), f"M2: only a step save is done, the final file never written -> failed ({st['state']}, {st['error']})")
+        up, job, out = pass_box(box, "m2c")
+        (out / "m2c.safetensors").write_bytes(sft("f"))
+        up.run_pass(up.runs["m2c"], final=False)
+        up.run_pass(up.runs["m2c"], final=False)                   # sent
+        up.runs["m2c"].recs[str(out / "m2c.safetensors")].state = "gone"
+        up.finalize(up.runs["m2c"], "x")
+        st = up.status("m2c")
+        check(st["state"] == "failed", f"M2: the final file marked gone never counts as done ({st['state']})")
+        up, job, out = pass_box(box, "m2d")
+        (out / "m2d.safetensors").write_bytes(sft("f"))
+        up.run_pass(up.runs["m2d"], final=True)
+        st = up.status("m2d")
+        check(st["state"] == "done" and st["error"] is None, f"M2: the final file uploaded and verified -> done ({st['state']})")
+    finally:
+        restore(saved, box)
+
+
+def test_m3_incomplete_checkpoint():
+    saved = {k: getattr(runner, k) for k in SAVED}
+    box = UBox()
+    try:
+        up, job, out = pass_box(box, "m3")
+        whole = sft("w", 400)
+        (out / "m3_000000001.safetensors").write_bytes(whole[:-10])      # cut off: the header promises 10 more bytes
+        (out / "m3.safetensors").write_bytes(b"not safetensors at all")  # no header
+        run = up.runs["m3"]
+        up.run_pass(run, final=False)
+        up.run_pass(run, final=False)
+        check(not [x for c in box.calls() for x in c["paths"] if x.endswith(".safetensors")], "M3: a checkpoint cut off, or without a header, is not sent by a periodic pass even when its size is stable")
+        (out / "m3_000000001.safetensors").write_bytes(whole)             # the writer finishes: now it goes
+        up.run_pass(run, final=False)
+        up.run_pass(run, final=False)
+        files = {f["file"]: f for f in up.status("m3")["files"]}
+        check(files["m3_000000001.safetensors"]["state"] == "done", f"M3: once the file is whole it is sent ({files['m3_000000001.safetensors']['state']})")
+        up.run_pass(run, final=True)
+        st = up.status("m3")
+        f = {x["file"]: x for x in st["files"]}["m3.safetensors"]
+        check(f["state"] == "failed" and f["error"] == "incomplete file" and f["url"] is None and st["state"] == "failed",
+              f"M3: the final pass reports a file that fails the check as incomplete, with no link, and the run is not done ({f['state']}, {f['error']}, {st['state']})")
+        sent = [x for c in box.calls() for x in c["paths"]]
+        check(not any(x.endswith("/m3.safetensors") for x in sent), "M3: the incomplete final file was never sent")
+        # the check itself
+        d = Path(box.dir)
+        cases = {"whole": (sft("a"), True), "one byte short": (sft("a")[:-1], False), "one byte long": (sft("a") + b"x", False),
+                 "empty": (b"", False), "huge header length": ((1 << 60).to_bytes(8, "little") + b"{}", False),
+                 "header not json": ((5).to_bytes(8, "little") + b"nope!", False)}
+        for name, (data, want) in cases.items():
+            (d / "c.safetensors").write_bytes(data)
+            check(runner.safetensors_complete(d / "c.safetensors") is want, f"M3: safetensors_complete: {name} -> {want}")
+    finally:
+        restore(saved, box)
+
+
+def test_m4_trainer_that_cannot_start():
+    box = UBox()
+    try:
+        p = box.start_hf(RUN_CMD=json.dumps([str(box.dir / "no-such-trainer")]))
+        box.wait_up(p)
+        box.post_job(p, "nostart")
+        T.wait_status(p, "nostart", T.TOKEN)
+        up = box.wait_upload(p, "nostart", secs=10)
+        check(up.get("state") == "failed" and "did not start" in (up.get("error") or ""), f"M4: a trainer that cannot start -> upload failed, not waiting for ever ({up.get('state')}, {up.get('error')})")
+        s, js, _ = T.call(p, "GET", "/jobs/nostart", token=T.TOKEN)
+        st = json.loads((box.output / "nostart" / "upload_status.json").read_text(encoding="utf-8"))
+        check(js["status"] == "failed" and st["state"] == "failed", "M4: the status file says failed too")
+        # a restarted runner with no upload_status.json for a finished run: failed, not waiting
+        box.post_job(p, "lost")
+        T.wait_status(p, "lost", T.TOKEN)
+        box.wait_upload(p, "lost")
+        p.kill()
+        p.wait(10)
+        (box.output / "lost" / "upload_status.json").unlink()
+        p2 = box.start_hf()
+        box.wait_up(p2)
+        again = box.upload_status(p2, "lost")
+        check(again.get("state") == "failed", f"M4: upload_status.json missing after a restart -> failed ({again.get('state')})")
+    finally:
+        box.close()
+
+
+def test_m5_caps_on_every_pass():
+    saved = {k: getattr(runner, k) for k in SAVED}
+    box = UBox()
+    try:
+        runner.UPLOAD_FILE_MAX = 1 << 20
+        up, job, out = pass_box(box, "m5")
+        f = out / "m5_000000001.safetensors"
+        f.write_bytes(sft("a", 10))
+        run = up.runs["m5"]
+        up.run_pass(run, final=False)                                 # first seen small
+        f.write_bytes(sft("a", 3 << 20))                              # then it grows past the cap
+        up.run_pass(run, final=False)
+        up.run_pass(run, final=True)
+        rec = {x["file"]: x for x in up.status("m5")["files"]}["m5_000000001.safetensors"]
+        sent = [x for c in box.calls() for x in c["paths"] if x.endswith(".safetensors")]
+        check(rec["state"] == "skipped" and "larger than" in rec["error"] and not sent, f"M5: a file first seen small that grows past the per-file cap is skipped, never sent ({rec['state']}, {sent})")
+        counted = sum(r.counted for r in run.recs.values() if r.kind == "checkpoint")
+        check(counted == 0, f"M5: the run total follows the file ({counted})")
+        # the per-run cap, with growth
+        runner.UPLOAD_FILE_MAX = 2 << 30
+        runner.UPLOAD_RUN_MAX = 100000
+        up, job, out = pass_box(box, "m5b")
+        a, b = out / "m5b_000000001.safetensors", out / "m5b.safetensors"
+        a.write_bytes(sft("a", 40000))
+        b.write_bytes(sft("b", 10))
+        run = up.runs["m5b"]
+        up.run_pass(run, final=False)
+        b.write_bytes(sft("b", 70000))                                # 40 k + 70 k is over the 100 k run cap
+        up.run_pass(run, final=True)
+        recs = {x["file"]: x for x in up.status("m5b")["files"]}
+        check(recs["m5b.safetensors"]["state"] == "skipped" and "would pass" in recs["m5b.safetensors"]["error"] and recs["m5b_000000001.safetensors"]["state"] == "done",
+              f"M5: a file that grows past the per-run cap is skipped, the earlier one stays done ({recs['m5b.safetensors']['state']})")
+    finally:
+        restore(saved, box)
+
+
+def test_t2_private_repository():
+    files = None
+    with tempfile.TemporaryDirectory() as tmp:
+        files = make_files(tmp, 2)
+        api = FakeApi(private=False)
+        lines, text = upload_lines(api, files)
+        check(all(x["state"] == "failed" and x["error"] == "refused: the repository is not private" for x in lines) and len(lines) == 2
+              and not any(c[0] == "create_commit" for c in api.calls), f"T2a: a public repository -> every file failed 'refused', nothing committed ({lines[0]})")
+        check(api.calls[0][0] == "whoami" and ("model_info", REPO) in api.calls, "T2a: the check runs before the first commit")
+        api = FakeApi(private=False)
+        buf = io.StringIO()
+        H.run_upload({"token": HF_TOKEN, "repo": REPO, "files": files, "message": "m", "allow_public": True}, api, H.Out(buf, [HF_TOKEN]), sleep=lambda s: None)
+        check(buf.getvalue().count('"done"') == 2, "T2a: with the explicit setting a public repository is allowed")
+        api = FakeApi()
+        lines, _ = upload_lines(api, files)
+        check([x["state"] for x in lines] == ["done", "done"], "T2a: a private repository is uploaded to")
+        # a failing check is retried like the commit, a 404 is a refusal
+        waits = []
+        api = FakeApi()
+        calls = {"n": 0}
+        real = api.model_info
+
+        def flaky(repo_id):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise HfHubHTTPError(500)
+            return real(repo_id)
+        api.model_info = flaky
+        lines, _ = upload_lines(api, files, waits=waits)
+        check(waits == [10, 30] and [x["state"] for x in lines] == ["done", "done"], f"T2a: the privacy check is retried on 500 ({waits})")
+
+
+def test_t2_runner_stops_on_a_refusal_and_passes_the_settings():
+    box = UBox()
+    try:
+        p = box.start_hf(FAKE_UP_MODE="refuse_private")
+        box.wait_up(p)
+        box.post_job(p, "pub", steps=10)
+        T.wait_status(p, "pub", T.TOKEN, secs=30)
+        up = box.wait_upload(p, "pub")
+        check(up.get("state") == "failed" and up.get("error") == "refused: the repository is not private" and len(box.calls()) == 1,
+              f"T2a: the runner reports the refusal and runs no more passes ({up.get('state')}, {up.get('error')}, {len(box.calls())} child runs)")
+    finally:
+        box.close()
+    box = UBox()
+    try:
+        p = box.start_hf()
+        box.wait_up(p)
+        box.post_job(p, "flags")
+        box.wait_upload(p, "flags")
+        c = box.calls()
+        check(c and all(x["allow_public"] is False and x["allow_classic"] is False for x in c), "T2: by default neither allow flag is set in the child's spec")
+    finally:
+        box.close()
+    box = UBox()
+    try:
+        p = box.start_hf(RUNNER_UPLOAD_ALLOW_PUBLIC="1", RUNNER_UPLOAD_ALLOW_CLASSIC="1")
+        box.wait_up(p)
+        box.post_job(p, "flags2")
+        box.wait_upload(p, "flags2")
+        c = box.calls()
+        check(c and all(x["allow_public"] is True and x["allow_classic"] is True for x in c), "T2: the two settings given at machine creation reach the child")
+        check(not (set(c[0]["env_keys"]) & {"RUNNER_UPLOAD_ALLOW_PUBLIC", "RUNNER_UPLOAD_ALLOW_CLASSIC"}), "T2: and are not in the child's environment")
+    finally:
+        box.close()
+
+
+def test_t3_endpoint_is_fixed():
+    saved = {k: os.environ.get(k) for k in ("HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE")}
+    try:
+        os.environ["HF_ENDPOINT"] = "http://127.0.0.1:9"
+        api = H.real_api(HF_TOKEN)
+        check(api.endpoint == "https://huggingface.co", f"T3b: HF_ENDPOINT in the environment does not move the write token's host ({api.endpoint})")
+        check(H.ENDPOINT == "https://huggingface.co" and H.TEST_ENDPOINT is None, "T3b: the endpoint is a constant, the test override is unset (a module value no environment variable or stdin field reaches)")
+        src = (Path(ROOT) / "trainer" / "cloud" / "hf_upload.py").read_text(encoding="utf-8")
+        check("HF_ENDPOINT\") or" not in src and "environ.get(\"HF_ENDPOINT" not in src, "T3b: hf_upload.py reads no endpoint from the environment")
+        H.TEST_ENDPOINT = "http://127.0.0.1:9"
+        try:
+            check(H.real_api(HF_TOKEN).endpoint == "http://127.0.0.1:9", "T3b: the test-only override works when a test sets it in process")
+        finally:
+            H.TEST_ENDPOINT = None
+        for k in saved:
+            os.environ[k] = "http://127.0.0.1:9/x"
+        old_environ = dict(os.environ)
+        H.harden_env()
+        check(not any(k in os.environ for k in saved), "T3b: the upload child drops HF_ENDPOINT and the CA bundle variables itself")
+        os.environ.update(old_environ)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    box = UBox()
+    try:
+        p = box.start_hf(HF_ENDPOINT="http://127.0.0.1:9", REQUESTS_CA_BUNDLE="/x", CURL_CA_BUNDLE="/x", SSL_CERT_FILE="/x")
+        box.wait_up(p)
+        box.post_job(p, "ep")
+        box.wait_upload(p, "ep")
+        keys = set(box.calls()[0]["env_keys"])
+        check(not (keys & {"HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE"}), f"T3b: the runner gives the child none of HF_ENDPOINT, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE, SSL_CERT_FILE ({sorted(keys)})")
+    finally:
+        box.close()
+
+
+def test_t4_checksum_required():
+    with tempfile.TemporaryDirectory() as tmp:
+        files = make_files(tmp, 2)
+        api = FakeApi(no_lfs=True)
+        lines, _ = upload_lines(api, files)
+        check(all(x["state"] == "failed" and x["error"] == "no checksum from the hub" for x in lines), f"T2c: a checkpoint without an LFS checksum from the hub is failed ({lines[0]})")
+        api = FakeApi(lfs_sha="0" * 64)
+        lines, _ = upload_lines(api, files)
+        check(all(x["error"] == "checksum differs" for x in lines), "T2c: a checksum that differs is failed")
+        cfg = [{"local": files[0]["local"], "path": "z-image-turbo/job/config.json", "sha256": files[0]["sha256"], "size": files[0]["size"]}]
+        api = FakeApi(no_lfs=True)
+        lines, _ = upload_lines(api, cfg)
+        check(lines[0]["state"] == "done", "T2c: a small file the hub keeps outside LFS is checked by size")
+
+
+def test_t5_token_kind():
+    with tempfile.TemporaryDirectory() as tmp:
+        files = make_files(tmp, 2)
+        api = FakeApi(role="fineGrained")
+        lines, _ = upload_lines(api, files)
+        check([x["state"] for x in lines] == ["done", "done"], "T2d: whoami answers a fine-grained token -> uploaded")
+        for role in ("write", "admin", "read", None):
+            api = FakeApi(role=role)
+            lines, _ = upload_lines(api, files)
+            check(all(x["state"] == "failed" and x["error"].startswith("refused: only a fine-grained token") for x in lines) and not any(c[0] == "create_commit" for c in api.calls),
+                  f"T2d: whoami answers a classic token (role {role}) -> refused before anything is sent")
+        api = FakeApi(role="write")
+        buf = io.StringIO()
+        H.run_upload({"token": HF_TOKEN, "repo": REPO, "files": files, "message": "m", "allow_classic": True}, api, H.Out(buf, [HF_TOKEN]), sleep=lambda s: None)
+        check(buf.getvalue().count('"done"') == 2, "T2d: the explicit setting lets a classic token through (for a test on the owner's own PC)")
+        api = FakeApi(role="write", private=False)
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["error"].startswith("refused: only a fine-grained"), "T2d: the token kind is checked first")
+
+
+def test_nice_to_have():
+    saved = {k: getattr(runner, k) for k in SAVED}
+    box = UBox()
+    try:
+        up, job, out = pass_box(box, "n3")
+        (out / "n3_000000001.safetensors").write_bytes(sft("a"))
+        os.environ["FAKE_UP_MODE"] = "refuse"
+        run = up.runs["n3"]
+        run.refused = None
+        up.run_pass(run, final=False)
+        up.run_pass(run, final=False)
+        (out / "n3_000000001.safetensors").unlink()
+        up.run_pass(run, final=False)
+        rec = {x["file"]: x for x in up.status("n3")["files"]}["n3_000000001.safetensors"]
+        check(rec["state"] == "gone" and rec["error"] == "gone after a failed upload", f"N3: a checkpoint whose upload failed and that was then removed keeps its error ({rec['state']}, {rec['error']})")
+    finally:
+        restore(saved, box)
+
+
 # ================================================================== files of the image, the README
 def test_files_and_readme():
     docker = (Path(ROOT) / "trainer" / "cloud" / "Dockerfile").read_text(encoding="utf-8")
@@ -693,7 +1051,10 @@ def test_files_and_readme():
     check("Checkpoints to Hugging Face" in text and "huggingface_hub" in text and "fine-grained" in text.lower() and "classic" in text.lower(),
           "readme: the section 'Checkpoints to Hugging Face' names the library version, the classic token risk and the fine-grained advice")
     check("/proc/1/environ" in text and "RunPod keeps" in text, "readme: says the training child could read /proc/1/environ and that RunPod keeps the pod environment")
+    check("RUNNER_UPLOAD_ALLOW_CLASSIC" in text and "RUNNER_UPLOAD_ALLOW_PUBLIC" in text and "must not" in text.lower() and "whoami" in text.lower(),
+          "readme: says how to override the token-kind and the public-repository checks, and that a rented machine must not")
     src = (Path(ROOT) / "trainer" / "runner.py").read_text(encoding="utf-8")
+    check('"python -I -u /runner/hf_upload.py upload"' in src, "N7: the upload child runs with -I (no PYTHONPATH or user site while it holds the token)")
     check(not re.search(r"^\s*(import|from)\s+(huggingface_hub|requests|yaml)", src, re.M), "runner.py stays standard library only")
 
 
@@ -701,7 +1062,10 @@ def run(only=None):
     del RESULTS[:]
     tests = [test_hf_upload_in_process, test_selftest_in_process, test_runner_end_to_end, test_runner_restart_keeps_status,
              test_runner_off_and_bad_variables, test_caps_and_safety, test_refused_and_leaky_uploader, test_limit_mid_upload,
-             test_idle_with_upload_in_flight, test_files_and_readme]
+             test_idle_with_upload_in_flight, test_m1_final_pass_after_a_pass_in_flight, test_m2_done_needs_the_final_checkpoint,
+             test_m3_incomplete_checkpoint, test_m4_trainer_that_cannot_start, test_m5_caps_on_every_pass, test_t2_private_repository,
+             test_t2_runner_stops_on_a_refusal_and_passes_the_settings, test_t3_endpoint_is_fixed, test_t4_checksum_required,
+             test_t5_token_kind, test_nice_to_have, test_files_and_readme]
     for fn in tests:
         if not only or any(o in fn.__name__ for o in only):
             fn()

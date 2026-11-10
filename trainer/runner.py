@@ -79,8 +79,12 @@ TOKEN_MIN = 32
 # Hugging Face upload (ss-m10t8): read once and removed, like RUNNER_TOKEN, so no child ever inherits them
 HF_WRITE_TOKEN = os.environ.pop("HF_WRITE_TOKEN", "")
 HF_REPO = os.environ.pop("HF_REPO", "")
+# Read once at start, like the token: set at machine creation, so nobody can change them while the run goes on.
+UPLOAD_ALLOW_PUBLIC = os.environ.pop("RUNNER_UPLOAD_ALLOW_PUBLIC", "") == "1"      # allow a public target repository
+UPLOAD_ALLOW_CLASSIC = os.environ.pop("RUNNER_UPLOAD_ALLOW_CLASSIC", "") == "1"    # allow a classic (account-wide) token
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
-CHILD_ENV_DROP = ("RUNNER_TOKEN", "HF_WRITE_TOKEN", "RUNPOD_API_KEY")   # HF_TOKEN stays: gated base models need it
+CHILD_ENV_DROP = ("RUNNER_TOKEN", "HF_WRITE_TOKEN", "RUNPOD_API_KEY")
+UPLOAD_CHILD_ENV_DROP = ("HF_TOKEN", "HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE")  # the token goes only to huggingface.co   # HF_TOKEN stays: gated base models need it
 SOCKET_TIMEOUT = 120                  # seconds per socket read
 BODY_MAX = 2 << 20                    # JSON request bodies
 CONFIG_MAX = 262144                   # inline config, bytes
@@ -106,7 +110,7 @@ TAIL = 40                             # lines returned in log_tail
 KILL_GRACE = float(os.environ.get("RUNNER_KILL_GRACE_S", "15"))   # seconds between SIGTERM and SIGKILL on cancel
 _exit = os._exit                      # tests replace it
 # Upload to Hugging Face (module constants so tests can override them)
-UPLOAD_CMD = os.environ.get("RUNNER_UPLOAD_CMD", "python -u /runner/hf_upload.py upload")
+UPLOAD_CMD = os.environ.get("RUNNER_UPLOAD_CMD", "python -I -u /runner/hf_upload.py upload")
 UPLOAD_EVERY_S = 60.0                 # RUNNER_UPLOAD_EVERY_S, set by configure()
 UPLOAD_SETTLE_S = 30.0                # RUNNER_UPLOAD_SETTLE_S: a file must be this old and unchanged between two passes
 UPLOAD_GRACE_S = 300.0                # RUNNER_UPLOAD_GRACE_S: the last pass at a time or idle limit (at most 480)
@@ -260,6 +264,35 @@ def kill_tree(proc):
             pass
 
 
+def safetensors_complete(path):
+    """True when the file is a whole safetensors file: the 8-byte header length, a JSON header, and a file size equal to
+    8 + header length + the end of the last tensor. A file still being written, or cut off, fails this."""
+    try:
+        size = os.lstat(path).st_size
+        with open(path, "rb") as fh:
+            head = fh.read(8)
+            if len(head) < 8:
+                return False
+            n = int.from_bytes(head, "little")
+            if n < 2 or n > (100 << 20) or 8 + n > size:
+                return False
+            meta = json.loads(fh.read(n).decode("utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return False
+    if not isinstance(meta, dict):
+        return False
+    end = 0
+    for key, tensor in meta.items():
+        if key == "__metadata__":
+            continue
+        offs = tensor.get("data_offsets") if isinstance(tensor, dict) else None
+        if not (isinstance(offs, list) and len(offs) == 2 and all(isinstance(o, int) and not isinstance(o, bool) for o in offs)
+                and 0 <= offs[0] <= offs[1]):
+            return False
+        end = max(end, offs[1])
+    return size == 8 + n + end
+
+
 class Rec:
     """One file of a run: what it is, where it goes, and how far it got."""
 
@@ -269,6 +302,7 @@ class Rec:
         self.state = "pending"
         self.sig = None                  # (size, mtime_ns) seen at the last scan
         self.hashed_sig = None           # the signature the sha256 belongs to
+        self.counted = 0                 # the bytes this file adds to the run's total
 
     def public(self):
         return {"file": self.rel, "path": self.path, "sha256": self.sha256, "size": self.size, "state": self.state,
@@ -296,6 +330,7 @@ class Uploader:
         self.last = None
         self.pass_lock = threading.Lock()          # one pass at a time
         self.state_lock = threading.RLock()
+        self.persist_lock = threading.Lock()
         self.proc = None
         self.stopping = False                      # the limit is here: no new periodic pass
         self.timed_out = False                     # the grace ended while a pass was in flight
@@ -347,23 +382,32 @@ class Uploader:
         with self.state_lock:
             recs = sorted(run.recs.values(), key=lambda r: ({"checkpoint": 0, "sample": 1, "config": 2}[r.kind], r.rel))
             bad = [r for r in recs if r.kind == "checkpoint" and r.state not in ("done", "gone")]
+            final = next((r for r in recs if r.rel == f"{run.job_name}.safetensors"), None)
             if run.error:
                 state, error = "failed", run.error
             elif run.final_done:
-                state = "failed" if bad else "done"
-                error = (bad[0].error or "a checkpoint was not uploaded") if bad else None
+                # "done" needs the final checkpoint uploaded and verified; a pruned step save (gone) never covers it
+                if bad:
+                    state, error = "failed", bad[0].error or "a checkpoint was not uploaded"
+                elif final is None:
+                    state, error = "failed", f"final checkpoint {run.job_name}.safetensors was never written"
+                elif final.state != "done":
+                    state, error = "failed", final.error or f"final checkpoint {run.job_name}.safetensors was not uploaded"
+                else:
+                    state, error = "done", None
             else:
                 state, error = ("uploading" if run.in_flight else "waiting"), None
             return {"state": state, "repo": self.repo, "error": error, "files": [r.public() for r in recs]}
 
     def persist(self, run):
-        try:
-            run.out_dir.mkdir(parents=True, exist_ok=True)
-            tmp = run.out_dir / "upload_status.json.tmp"
-            tmp.write_text(json.dumps(self.public(run), indent=1), encoding="utf-8")
-            tmp.replace(run.out_dir / "upload_status.json")
-        except OSError:
-            pass
+        with self.persist_lock:                      # three threads call this and share one tmp name
+            try:
+                run.out_dir.mkdir(parents=True, exist_ok=True)
+                tmp = run.out_dir / "upload_status.json.tmp"
+                tmp.write_text(json.dumps(self.public(run), indent=1), encoding="utf-8")
+                tmp.replace(run.out_dir / "upload_status.json")
+            except OSError:
+                pass
 
     def tick(self):
         """One periodic pass for the job that is running (the loop thread calls this every UPLOAD_EVERY_S)."""
@@ -389,8 +433,16 @@ class Uploader:
             return
         if run.refused:
             self.finalize(run, run.refused)
-        else:
-            self.run_pass(run, final=True)
+        elif not self.run_pass(run, final=True, wait_s=UPLOAD_PASS_TIMEOUT_S + 30):
+            self.finalize(run, "the upload pass in flight did not end")   # cannot happen: the child is killed at its timeout
+
+    def abort(self, job, why):
+        """The trainer never started: nothing will be uploaded, so the upload ends failed now (not waiting for ever)."""
+        run = self.runs.get(job.name) if self.enabled else None
+        if run is None or run.final_done:
+            return
+        run.error = why
+        self.finalize(run, why)
 
     def before_exit(self, reason, budget_s):
         """At a time or idle limit: wait for a pass in flight, make the last pass, kill the child when the budget ends."""
@@ -457,7 +509,7 @@ class Uploader:
                 st = os.lstat(local)
             except OSError:
                 if rec is not None and rec.state in ("pending", "failed"):
-                    rec.state, rec.error = "gone", None
+                    rec.state, rec.error = "gone", ("gone after a failed upload" if rec.state == "failed" else None)
                 continue
             if rec is None:
                 rec = run.recs[key] = Rec(rel, f"{run.prefix}/{rel}", local, kind)
@@ -466,16 +518,18 @@ class Uploader:
                     rec.state, rec.error = "skipped", "name not allowed"
                 elif not stat.S_ISREG(st.st_mode) or not inside(CONFIG_ROOT if kind == "config" else d, local):
                     rec.state, rec.error = "skipped", "not a regular file inside the job folder"
-                elif st.st_size > UPLOAD_FILE_MAX:
-                    rec.state, rec.error = "skipped", f"larger than {UPLOAD_FILE_MAX} bytes"
                 elif len(run.recs) > UPLOAD_COUNT_MAX:
                     rec.state, rec.error = "skipped", f"more than {UPLOAD_COUNT_MAX} files in this run"
-                elif run.total_bytes + st.st_size > UPLOAD_RUN_MAX:
-                    rec.state, rec.error = "skipped", f"this run would pass {UPLOAD_RUN_MAX} bytes"
-                else:
-                    run.total_bytes += st.st_size
             if rec.state not in ("pending", "failed"):
                 continue
+            why = self.cap_reason(run, rec, st.st_size)          # the size caps count on every pass, with today's size
+            if why:
+                run.total_bytes -= rec.counted
+                rec.counted = 0
+                rec.state, rec.error = "skipped", why
+                continue
+            run.total_bytes += st.st_size - rec.counted
+            rec.counted = st.st_size
             sig = (st.st_size, st.st_mtime_ns)
             stable = rec.sig == sig and now - st.st_mtime >= UPLOAD_SETTLE_S
             rec.sig = sig
@@ -483,15 +537,36 @@ class Uploader:
                 picked.append(rec)
         for key, rec in run.recs.items():
             if key not in seen and rec.state in ("pending", "failed"):
-                rec.state, rec.error = "gone", None
+                rec.state, rec.error = "gone", ("gone after a failed upload" if rec.state == "failed" else None)
         return picked
 
-    def hash_files(self, picked):
-        """The runner's own streaming sha256 and size of each file, before it goes out."""
+    @staticmethod
+    def cap_reason(run, rec, size):
+        """Why a file of this size may not go (per-file and per-run caps), else None."""
+        if size > UPLOAD_FILE_MAX:
+            return f"larger than {UPLOAD_FILE_MAX} bytes"
+        if run.total_bytes - rec.counted + size > UPLOAD_RUN_MAX:
+            return f"this run would pass {UPLOAD_RUN_MAX} bytes"
+        return None
+
+    def hash_files(self, run, picked, final=False):
+        """The runner's own streaming sha256 and size of each file, before it goes out. A checkpoint whose safetensors
+        header does not match its size is still being written, or was cut off: it waits, and in the final pass it
+        fails as incomplete (no link)."""
         ready = []
         for rec in picked:
             try:
+                if rec.kind == "checkpoint" and not safetensors_complete(rec.local):
+                    if final:
+                        rec.state, rec.error = "failed", "incomplete file"
+                    continue
                 if rec.hashed_sig != rec.sig:
+                    why = self.cap_reason(run, rec, rec.sig[0])         # the caps again, right before the upload
+                    if why:
+                        run.total_bytes -= rec.counted
+                        rec.counted = 0
+                        rec.state, rec.error = "skipped", why
+                        continue
                     digest = sha256_file(rec.local)
                     after = os.lstat(rec.local)
                     if (after.st_size, after.st_mtime_ns) != rec.sig:     # it changed while we read it: next pass
@@ -500,22 +575,29 @@ class Uploader:
                     rec.sha256, rec.hashed_sig, rec.size = digest, rec.sig, rec.sig[0]
                 ready.append(rec)
             except FileNotFoundError:
-                rec.state, rec.error = "gone", None
+                rec.state, rec.error = "gone", ("gone after a failed upload" if rec.state == "failed" else None)
             except OSError as e:
                 rec.state, rec.error = "failed", f"cannot read ({type(e).__name__})"
         return ready
 
-    def run_pass(self, run, final, deadline=None):
-        """One pass: pick, hash, one commit through the child, read its result lines. False when another pass runs."""
-        if not self.enabled or not self.pass_lock.acquire(blocking=False):
+    def run_pass(self, run, final, deadline=None, wait_s=0.0):
+        """One pass: pick, hash, one commit through the child, read its result lines. False when another pass runs
+        (the final pass of a job waits up to wait_s for it: the job ended while a periodic pass was in flight)."""
+        if not self.enabled:
+            return False
+        got = self.pass_lock.acquire(timeout=wait_s) if wait_s else self.pass_lock.acquire(blocking=False)
+        if not got:
             return False
         picked = []
+        if run.final_done and not final:             # a periodic pass that was waiting behind the final one
+            self.pass_lock.release()
+            return False
         try:
             with self.state_lock:
                 run.in_flight = True
             self.persist(run)
             try:
-                picked = self.hash_files(self.scan(run, final))
+                picked = self.hash_files(run, self.scan(run, final), final)
                 if picked:
                     self.send(run, picked, deadline)
             except Exception as e:                       # noqa: BLE001 - a pass must never break the runner
@@ -535,7 +617,7 @@ class Uploader:
 
     def child_env(self):
         env = dict(os.environ)
-        for key in (*CHILD_ENV_DROP, "HF_TOKEN"):
+        for key in (*CHILD_ENV_DROP, *UPLOAD_CHILD_ENV_DROP):
             env.pop(key, None)
         env.update(HF_HUB_DISABLE_TELEMETRY="1", HF_HUB_DISABLE_PROGRESS_BARS="1", HF_HUB_DISABLE_IMPLICIT_TOKEN="1",
                    PYTHONUNBUFFERED="1")
@@ -544,6 +626,7 @@ class Uploader:
     def send(self, run, recs, deadline):
         """Hand the files to the child (the token goes on its stdin, once) and record each file's result line."""
         spec = {"token": self.token, "repo": self.repo, "message": f"{run.job_name}: {len(recs)} files",
+                "allow_public": UPLOAD_ALLOW_PUBLIC, "allow_classic": UPLOAD_ALLOW_CLASSIC,
                 "files": [{"local": str(r.local), "path": r.path, "sha256": r.sha256, "size": r.size} for r in recs]}
         timeout = UPLOAD_PASS_TIMEOUT_S if deadline is None else max(1.0, min(UPLOAD_PASS_TIMEOUT_S, deadline - time.time()))
         kw = {"start_new_session": True} if os.name != "nt" else {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
@@ -596,7 +679,9 @@ class Uploader:
             rec.state, rec.error = "failed", self.redact(error)
             failed += 1
             m = REFUSED_RE.search(rec.error)
-            if m and run.refused is None:
+            if rec.error.startswith("refused: ") and run.refused is None:     # not private, or a classic token
+                run.refused = rec.error
+            elif m and run.refused is None:
                 run.refused = f"token or repo refused (HTTP {m.group(1)})"
         if run.refused:
             with self.state_lock:
@@ -749,6 +834,10 @@ class Job:
             self._write_log(self.error)
             self.persist()
             self.settled.set()
+            try:
+                UPLOADER.abort(self, "the trainer did not start")     # not "waiting" for ever
+            except Exception as e:                   # noqa: BLE001
+                sys.stderr.write(f"runner: upload abort failed: {type(e).__name__}\n")
             return
         with self.lock:
             self.status, self.started = "running", time.time()
@@ -898,7 +987,7 @@ def stored_upload(out_dir):
             return up
     except (OSError, ValueError):
         pass
-    return {"state": "waiting", "repo": UPLOADER.repo, "error": None, "files": []}
+    return {"state": "failed", "repo": UPLOADER.repo, "error": "no upload status was saved for this run", "files": []}
 
 
 def busy_with(name):

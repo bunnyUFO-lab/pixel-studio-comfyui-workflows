@@ -295,7 +295,8 @@ def test_auth_and_secrets():
     try:
         # since ss-m10t8 a HF_WRITE_TOKEN needs HF_REPO, the token form and RUNNER_TOKEN (else the runner exits 2)
         p = box.start(token=TOKEN, HF_WRITE_TOKEN="hf_" + "x" * 30, HF_REPO="test/sprite-studio-loras",
-                      RUNPOD_API_KEY="rpa_" + "y" * 20, FAKE_STEPS="3")
+                      RUNPOD_API_KEY="rpa_" + "y" * 20, FAKE_STEPS="3",
+                      RUNNER_UPLOAD_CMD=json.dumps([sys.executable, "-c", "pass"]))     # never the real uploader, whatever the image has
         box.wait_up(p)
         make_config(box, "scrub")
         call(p, "POST", "/jobs", {"name": "scrub", "config_path": str(box.configs / "scrub.yaml")}, token=TOKEN)
