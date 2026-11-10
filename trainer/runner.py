@@ -32,6 +32,9 @@ Environment:
   RUNNER_ALLOW_OPEN=1  allow a non-local RUNNER_HOST without a token (compose does; the port is local there)
   RUNNER_TIME_LIMIT_S / RUNNER_TIME_LIMIT_MAX_S / RUNNER_IDLE_LIMIT_S / RUNNER_STATE_DIR / RUNNER_UPLOAD_MAX_BYTES
                 (see trainer/README.md, "On a rented machine")
+  HF_WRITE_TOKEN + HF_REPO   upload checkpoints, samples and the config to that private Hugging Face repo (cloud only; both
+                read once and removed from the environment); RUNNER_UPLOAD_CMD / _EVERY_S / _SETTLE_S / _GRACE_S
+                (see trainer/README.md, "Checkpoints to Hugging Face"); GET /jobs/<name> gains `upload`
 
 Progress comes from ai-toolkit's tqdm bar ("<name>:  12%|#2   | 300/2500 [05:01<36:00,  1.02s/it, lr: 1.0e-04
 loss: 4.1e-01]"), checkpoints and samples from the output folder (<name>_000000250.safetensors, <name>.safetensors,
@@ -50,6 +53,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -72,6 +76,9 @@ STATE_DIR = Path(os.environ.get("RUNNER_STATE_DIR", "/workspace/runner-state"))
 # Read once and removed, so the ai-toolkit child and any later environment dump never see it.
 TOKEN = os.environ.pop("RUNNER_TOKEN", "")
 TOKEN_MIN = 32
+# Hugging Face upload (ss-m10t8): read once and removed, like RUNNER_TOKEN, so no child ever inherits them
+HF_WRITE_TOKEN = os.environ.pop("HF_WRITE_TOKEN", "")
+HF_REPO = os.environ.pop("HF_REPO", "")
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 CHILD_ENV_DROP = ("RUNNER_TOKEN", "HF_WRITE_TOKEN", "RUNPOD_API_KEY")   # HF_TOKEN stays: gated base models need it
 SOCKET_TIMEOUT = 120                  # seconds per socket read
@@ -98,10 +105,28 @@ LOG_LINES = 400                       # kept in memory per job
 TAIL = 40                             # lines returned in log_tail
 KILL_GRACE = float(os.environ.get("RUNNER_KILL_GRACE_S", "15"))   # seconds between SIGTERM and SIGKILL on cancel
 _exit = os._exit                      # tests replace it
+# Upload to Hugging Face (module constants so tests can override them)
+UPLOAD_CMD = os.environ.get("RUNNER_UPLOAD_CMD", "python -u /runner/hf_upload.py upload")
+UPLOAD_EVERY_S = 60.0                 # RUNNER_UPLOAD_EVERY_S, set by configure()
+UPLOAD_SETTLE_S = 30.0                # RUNNER_UPLOAD_SETTLE_S: a file must be this old and unchanged between two passes
+UPLOAD_GRACE_S = 300.0                # RUNNER_UPLOAD_GRACE_S: the last pass at a time or idle limit (at most 480)
+UPLOAD_GRACE_MAX_S = 480.0            # + the 15 s kill grace and 5 s settle stays inside the backstop (limit + 600 s)
+UPLOAD_PASS_TIMEOUT_S = 900.0         # one upload child
+UPLOAD_FILE_MAX = 2 << 30
+UPLOAD_RUN_MAX = 6 << 30
+UPLOAD_COUNT_MAX = 300
+MODEL_KEYS = {"Tongyi-MAI/Z-Image-Turbo": "z-image-turbo"}     # config model.name_or_path -> the app's model id
+HF_BASE_URL = "https://huggingface.co"
 
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")           # \Z, not $: "job\n" must not match
 ENTRY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.(png|jpg|jpeg|webp|txt)\Z", re.I)
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,}\Z")                        # what secrets.token_urlsafe makes
+HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{20,}\Z")
+HF_REPO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
+UPLOAD_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.(safetensors|jpg|jpeg|png|webp|json)\Z")
+HEX40_RE = re.compile(r"[0-9a-f]{40}\Z")
+HEX64_RE = re.compile(r"[0-9a-f]{64}\Z")
+REFUSED_RE = re.compile(r"(?<![0-9])(401|403|404)(?![0-9])")
 LENGTH_RE = re.compile(r"[0-9]{1,15}\Z")                              # ASCII digits only ("\u00b2".isdigit() is True)
 BAR_RE = re.compile(r"^(?P<desc>.*?):?\s*(?P<pct>\d{1,3})%\|(?P<bar>[^|]*)\|\s*(?P<n>\d+)/(?P<total>\d+)\s*(?:\[(?P<info>[^\]]*)\]?)?")
 RATE_RE = re.compile(r"(?P<v>\d+(?:\.\d+)?)\s*(?P<u>s/it|it/s)")
@@ -201,13 +226,398 @@ def list_outputs(out_dir):
     return ck, sm
 
 
-# ----------------------------------------------------------------- hooks (ss-m10t8 fills these: checkpoints to Hugging Face)
+# ----------------------------------------------------------------- checkpoints to Hugging Face (ss-m10t8)
+def upload_command():
+    raw = UPLOAD_CMD.strip()
+    return json.loads(raw) if raw.startswith("[") else shlex.split(raw)
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(CHUNK)
+            if not chunk:
+                return h.hexdigest()
+            h.update(chunk)
+
+
+def kill_tree(proc):
+    """Stop a child and everything it started (no grace: an upload child holds nothing that needs saving)."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=20)
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if proc.poll() is None:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
+class Rec:
+    """One file of a run: what it is, where it goes, and how far it got."""
+
+    def __init__(self, rel, path, local, kind):
+        self.rel, self.path, self.local, self.kind = rel, path, local, kind     # kind: checkpoint | sample | config
+        self.sha256 = self.size = self.error = self.url = None
+        self.state = "pending"
+        self.sig = None                  # (size, mtime_ns) seen at the last scan
+        self.hashed_sig = None           # the signature the sha256 belongs to
+
+    def public(self):
+        return {"file": self.rel, "path": self.path, "sha256": self.sha256, "size": self.size, "state": self.state,
+                "error": self.error, "url": self.url}
+
+
+class UploadRun:
+    def __init__(self, job_name, out_dir, prefix, error=None):
+        self.job_name, self.out_dir, self.prefix = job_name, Path(out_dir), prefix
+        self.recs = {}                   # local path -> Rec
+        self.error = error               # a run-level failure: unknown base model, token or repo refused
+        self.final_done = error is not None
+        self.in_flight = False
+        self.total_bytes = 0
+        self.refused = None              # "token or repo refused (HTTP 401)": no more passes
+
+
+class Uploader:
+    """Sends each finished checkpoint, the samples and the config to a private Hugging Face repo while the run trains,
+    and once more when it ends. The token is held here only: each pass hands it to a child on its stdin."""
+
+    def __init__(self, token, repo, enabled=True):
+        self.token, self.repo, self.enabled = token, repo, bool(enabled and token and repo)
+        self.runs = {}
+        self.last = None
+        self.pass_lock = threading.Lock()          # one pass at a time
+        self.state_lock = threading.RLock()
+        self.proc = None
+        self.stopping = False                      # the limit is here: no new periodic pass
+        self.timed_out = False                     # the grace ended while a pass was in flight
+
+    # ---- helpers
+    def redact(self, text):
+        text = str(text)
+        return text.replace(self.token, "***") if self.token else text
+
+    def busy(self):
+        return self.enabled and any(r.in_flight for r in list(self.runs.values()))
+
+    def base_prefix(self, job):
+        """`<base model>/<job>` from the config's model.name_or_path, or None."""
+        try:
+            text = Path(job.config_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        try:
+            name = json.loads(text)["config"]["process"][0]["model"]["name_or_path"]
+        except (ValueError, KeyError, IndexError, TypeError):
+            m = re.search(r"^\s*name_or_path:\s*[\"']?([^\s\"']+)", text, re.M)
+            name = m.group(1) if m else None
+        key = MODEL_KEYS.get(name) if isinstance(name, str) else None
+        return f"{key}/{job.name}" if key else None
+
+    # ---- lifecycle and status
+    def begin(self, job):
+        if not self.enabled:
+            return
+        prefix = self.base_prefix(job)
+        run = UploadRun(job.name, job.output_dir, prefix, None if prefix else "unknown base model")
+        with self.state_lock:
+            self.runs[job.name] = run
+            self.last = run
+            self.stopping = False
+            self.timed_out = False
+        self.persist(run)
+
+    def status(self, name):
+        if not self.enabled:
+            return {"state": "off", "repo": None, "error": None, "files": []}
+        run = self.runs.get(name)
+        if run is None:
+            return {"state": "waiting", "repo": self.repo, "error": None, "files": []}
+        return self.public(run)
+
+    def public(self, run):
+        with self.state_lock:
+            recs = sorted(run.recs.values(), key=lambda r: ({"checkpoint": 0, "sample": 1, "config": 2}[r.kind], r.rel))
+            bad = [r for r in recs if r.kind == "checkpoint" and r.state not in ("done", "gone")]
+            if run.error:
+                state, error = "failed", run.error
+            elif run.final_done:
+                state = "failed" if bad else "done"
+                error = (bad[0].error or "a checkpoint was not uploaded") if bad else None
+            else:
+                state, error = ("uploading" if run.in_flight else "waiting"), None
+            return {"state": state, "repo": self.repo, "error": error, "files": [r.public() for r in recs]}
+
+    def persist(self, run):
+        try:
+            run.out_dir.mkdir(parents=True, exist_ok=True)
+            tmp = run.out_dir / "upload_status.json.tmp"
+            tmp.write_text(json.dumps(self.public(run), indent=1), encoding="utf-8")
+            tmp.replace(run.out_dir / "upload_status.json")
+        except OSError:
+            pass
+
+    def tick(self):
+        """One periodic pass for the job that is running (the loop thread calls this every UPLOAD_EVERY_S)."""
+        if not self.enabled or self.stopping:
+            return
+        cur = current()
+        run = self.runs.get(cur.name) if cur else None
+        if run and not run.final_done and not run.refused:
+            self.run_pass(run, final=False)
+
+    def loop(self):
+        while True:
+            time.sleep(UPLOAD_EVERY_S)
+            try:
+                self.tick()
+            except Exception as e:                       # noqa: BLE001 - the loop must never die
+                sys.stderr.write(f"runner: upload pass failed: {type(e).__name__}\n")
+
+    def finish(self, job):
+        """After the process has exited: the last pass, with everything not yet uploaded."""
+        run = self.runs.get(job.name) if self.enabled else None
+        if run is None or run.final_done or self.stopping:
+            return
+        if run.refused:
+            self.finalize(run, run.refused)
+        else:
+            self.run_pass(run, final=True)
+
+    def before_exit(self, reason, budget_s):
+        """At a time or idle limit: wait for a pass in flight, make the last pass, kill the child when the budget ends."""
+        if not self.enabled:
+            return
+        end = time.time() + max(0.0, budget_s)
+        self.stopping = True
+        run = self.last
+        if run is None or run.final_done:
+            return
+        if not self.pass_lock.acquire(timeout=max(0.0, end - time.time())):
+            self.timed_out = True                        # the pass in flight ran out of grace: stop its child
+            kill_tree(self.proc)
+            if self.pass_lock.acquire(timeout=15):
+                self.pass_lock.release()
+            self.finalize(run, "time limit")
+            return
+        self.pass_lock.release()
+        if end - time.time() > 1 and not run.refused:
+            self.run_pass(run, final=True, deadline=end)
+        self.finalize(run, "time limit")
+
+    def finalize(self, run, why):
+        """The last pass is over (or was cut off): whatever is not uploaded failed, and the status is saved."""
+        with self.state_lock:
+            for r in run.recs.values():
+                if r.state in ("pending", "failed"):
+                    r.state, r.error = "failed", r.error or why
+            run.final_done = True
+            run.in_flight = False
+        self.persist(run)
+
+    # ---- one pass
+    def scan(self, run, final):
+        """Find the files, apply the caps and the safety rules, pick the ones to send. Never touches a local file."""
+        now = time.time()
+        d = run.out_dir
+        found = []                                       # (rel, local path, kind)
+        try:
+            with os.scandir(d) as it:
+                tops = sorted(e.name for e in it)
+        except OSError:
+            tops = []
+        for n in tops:
+            if n.lower().endswith(".safetensors"):
+                found.append((n, d / n, "checkpoint"))
+        try:
+            with os.scandir(d / "samples") as it:
+                samples = sorted(e.name for e in it)
+        except OSError:
+            samples = []
+        for n in samples:
+            if Path(n).suffix.lower() in SAMPLE_EXT:
+                found.append((f"samples/{n}", d / "samples" / n, "sample"))
+        cfg = CONFIG_ROOT / f"{run.job_name}.json"
+        if os.path.lexists(cfg):
+            found.append(("config.json", cfg, "config"))
+        seen, picked = set(), []
+        for rel, local, kind in found:
+            key = str(local)
+            seen.add(key)
+            rec = run.recs.get(key)
+            try:
+                st = os.lstat(local)
+            except OSError:
+                if rec is not None and rec.state in ("pending", "failed"):
+                    rec.state, rec.error = "gone", None
+                continue
+            if rec is None:
+                rec = run.recs[key] = Rec(rel, f"{run.prefix}/{rel}", local, kind)
+                shown = "config.json" if kind == "config" else local.name
+                if not UPLOAD_NAME_RE.match(shown):
+                    rec.state, rec.error = "skipped", "name not allowed"
+                elif not stat.S_ISREG(st.st_mode) or not inside(CONFIG_ROOT if kind == "config" else d, local):
+                    rec.state, rec.error = "skipped", "not a regular file inside the job folder"
+                elif st.st_size > UPLOAD_FILE_MAX:
+                    rec.state, rec.error = "skipped", f"larger than {UPLOAD_FILE_MAX} bytes"
+                elif len(run.recs) > UPLOAD_COUNT_MAX:
+                    rec.state, rec.error = "skipped", f"more than {UPLOAD_COUNT_MAX} files in this run"
+                elif run.total_bytes + st.st_size > UPLOAD_RUN_MAX:
+                    rec.state, rec.error = "skipped", f"this run would pass {UPLOAD_RUN_MAX} bytes"
+                else:
+                    run.total_bytes += st.st_size
+            if rec.state not in ("pending", "failed"):
+                continue
+            sig = (st.st_size, st.st_mtime_ns)
+            stable = rec.sig == sig and now - st.st_mtime >= UPLOAD_SETTLE_S
+            rec.sig = sig
+            if final or stable:
+                picked.append(rec)
+        for key, rec in run.recs.items():
+            if key not in seen and rec.state in ("pending", "failed"):
+                rec.state, rec.error = "gone", None
+        return picked
+
+    def hash_files(self, picked):
+        """The runner's own streaming sha256 and size of each file, before it goes out."""
+        ready = []
+        for rec in picked:
+            try:
+                if rec.hashed_sig != rec.sig:
+                    digest = sha256_file(rec.local)
+                    after = os.lstat(rec.local)
+                    if (after.st_size, after.st_mtime_ns) != rec.sig:     # it changed while we read it: next pass
+                        rec.sig = (after.st_size, after.st_mtime_ns)
+                        continue
+                    rec.sha256, rec.hashed_sig, rec.size = digest, rec.sig, rec.sig[0]
+                ready.append(rec)
+            except FileNotFoundError:
+                rec.state, rec.error = "gone", None
+            except OSError as e:
+                rec.state, rec.error = "failed", f"cannot read ({type(e).__name__})"
+        return ready
+
+    def run_pass(self, run, final, deadline=None):
+        """One pass: pick, hash, one commit through the child, read its result lines. False when another pass runs."""
+        if not self.enabled or not self.pass_lock.acquire(blocking=False):
+            return False
+        picked = []
+        try:
+            with self.state_lock:
+                run.in_flight = True
+            self.persist(run)
+            try:
+                picked = self.hash_files(self.scan(run, final))
+                if picked:
+                    self.send(run, picked, deadline)
+            except Exception as e:                       # noqa: BLE001 - a pass must never break the runner
+                sys.stderr.write(f"runner: upload pass failed: {type(e).__name__}\n")
+                for rec in picked:
+                    if rec.state == "pending":
+                        rec.state, rec.error = "failed", f"upload pass failed ({type(e).__name__})"
+        finally:
+            with self.state_lock:
+                run.in_flight = False
+            self.pass_lock.release()
+        if final and not self.timed_out:
+            self.finalize(run, "time limit" if deadline is not None else "not uploaded")
+        self.persist(run)
+        touch()
+        return True
+
+    def child_env(self):
+        env = dict(os.environ)
+        for key in (*CHILD_ENV_DROP, "HF_TOKEN"):
+            env.pop(key, None)
+        env.update(HF_HUB_DISABLE_TELEMETRY="1", HF_HUB_DISABLE_PROGRESS_BARS="1", HF_HUB_DISABLE_IMPLICIT_TOKEN="1",
+                   PYTHONUNBUFFERED="1")
+        return env
+
+    def send(self, run, recs, deadline):
+        """Hand the files to the child (the token goes on its stdin, once) and record each file's result line."""
+        spec = {"token": self.token, "repo": self.repo, "message": f"{run.job_name}: {len(recs)} files",
+                "files": [{"local": str(r.local), "path": r.path, "sha256": r.sha256, "size": r.size} for r in recs]}
+        timeout = UPLOAD_PASS_TIMEOUT_S if deadline is None else max(1.0, min(UPLOAD_PASS_TIMEOUT_S, deadline - time.time()))
+        kw = {"start_new_session": True} if os.name != "nt" else {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        results, why, data = {}, None, b""
+        try:
+            proc = subprocess.Popen(upload_command(), env=self.child_env(), stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=RUN_CWD, **kw)
+        except (OSError, ValueError) as e:
+            proc, why = None, f"could not start the upload ({type(e).__name__})"
+        if proc is not None:
+            self.proc = proc
+            try:
+                data, _ = proc.communicate(json.dumps(spec).encode("utf-8"), timeout=timeout)
+            except subprocess.TimeoutExpired:
+                kill_tree(proc)
+                try:
+                    data, _ = proc.communicate(timeout=5)
+                except (subprocess.TimeoutExpired, OSError, ValueError):
+                    data = b""
+                why = "time limit" if deadline is not None else "timeout"
+            except (OSError, ValueError):
+                kill_tree(proc)
+                why = "upload process failed"
+            finally:
+                self.proc = None
+            if self.timed_out:
+                why = "time limit"
+            for raw in data.decode("utf-8", "replace").splitlines():
+                try:
+                    obj = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(obj, dict) and isinstance(obj.get("path"), str):
+                    results[obj["path"]] = obj
+            if why is None and proc.returncode not in (0, None) and not results:
+                why = f"upload process exited with code {proc.returncode}"
+        spec = None
+        ok = failed = 0
+        for rec in recs:
+            obj = results.get(rec.path)
+            commit = obj.get("commit") if obj else None
+            if obj and obj.get("state") == "done" and isinstance(commit, str) and HEX40_RE.match(commit):
+                rec.state, rec.error = "done", None
+                rec.url = f"{HF_BASE_URL}/{self.repo}/resolve/{commit}/{rec.path}"
+                ok += 1
+                continue
+            error = obj.get("error") if obj else None
+            if not (isinstance(error, str) and re.fullmatch(r"[A-Za-z0-9_ .:()-]{1,120}", error)):
+                error = why or ("failed" if obj else "no result")
+            rec.state, rec.error = "failed", self.redact(error)
+            failed += 1
+            m = REFUSED_RE.search(rec.error)
+            if m and run.refused is None:
+                run.refused = f"token or repo refused (HTTP {m.group(1)})"
+        if run.refused:
+            with self.state_lock:
+                run.error = run.refused
+                for rec in recs:
+                    if rec.state == "failed":
+                        rec.error = run.refused
+        print(f"runner: upload {len(recs)} files: {ok} done, {failed} failed", flush=True)
+
+
+UPLOADER = Uploader("", "", enabled=False)
+
+
 def after_run(job):
-    """Called at the end of Job._pump, after the final status is saved. No-op for now."""
+    """Called at the end of Job._pump, after the final status is saved: the last upload pass."""
+    UPLOADER.finish(job)
 
 
 def before_exit(reason, budget_s):
-    """Called by the watchdog just before the runner exits for a time or idle limit. No-op for now."""
+    """Called by stop_for_limit just before the runner exits for a time or idle limit: the last pass inside a grace."""
+    UPLOADER.before_exit(reason, budget_s)
 
 
 def touch():
@@ -307,11 +717,11 @@ class Job:
                     "total_steps": self.total_steps, "it_per_s": self.it_per_s, "eta_s": self.eta_s, "loss": self.loss,
                     "log_tail": list(self.log)[-TAIL:], "checkpoints": ck, "samples": sm, "started": self.started,
                     "finished": self.finished, "returncode": self.returncode, "error": self.error,
-                    "config_path": self.config_path}
+                    "config_path": self.config_path, "upload": UPLOADER.status(self.name)}
 
     def persist(self):
         snap = self.snapshot()
-        snap.pop("checkpoints"), snap.pop("samples")
+        snap.pop("checkpoints"), snap.pop("samples"), snap.pop("upload")     # the upload keeps its own file
         try:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             tmp = self.output_dir / "runner_status.json.tmp"
@@ -468,10 +878,27 @@ def stored_status(name):
         tail = (out_dir / "runner.log").read_text(encoding="utf-8", errors="replace").splitlines()[-TAIL:]
     except OSError:
         pass
+    upload = stored_upload(out_dir)
     return {"name": name, "status": status, "phase": status, "step": snap.get("step", 0), "total_steps": snap.get("total_steps"),
             "it_per_s": None, "eta_s": None, "loss": snap.get("loss"), "log_tail": tail or snap.get("log_tail", []),
             "checkpoints": ck, "samples": sm, "started": snap.get("started"), "finished": snap.get("finished"),
-            "returncode": snap.get("returncode"), "error": snap.get("error"), "config_path": snap.get("config_path")}
+            "returncode": snap.get("returncode"), "error": snap.get("error"), "config_path": snap.get("config_path"), "upload": upload}
+
+
+def stored_upload(out_dir):
+    """The upload block of a run this runner process didn't start: upload_status.json, with an unfinished state turned
+    into failed (nobody is uploading any more)."""
+    if not UPLOADER.enabled:
+        return {"state": "off", "repo": None, "error": None, "files": []}
+    try:
+        up = json.loads((Path(out_dir) / "upload_status.json").read_text(encoding="utf-8"))
+        if isinstance(up, dict) and up.get("state") in ("off", "waiting", "uploading", "done", "failed"):
+            if up["state"] in ("waiting", "uploading"):
+                up["state"], up["error"] = "failed", "the trainer restarted before the upload ended"
+            return up
+    except (OSError, ValueError):
+        pass
+    return {"state": "waiting", "repo": UPLOADER.repo, "error": None, "files": []}
 
 
 def busy_with(name):
@@ -817,12 +1244,43 @@ def configure():
         if now >= DEADLINE:
             print("runner: time limit reached", flush=True)
             raise SystemExit(3)
+    configure_upload()
     touch()
+
+
+def configure_upload():
+    """Validate the Hugging Face upload settings (exit 2 on a bad one, naming the variable and never its value)."""
+    global UPLOAD_EVERY_S, UPLOAD_SETTLE_S, UPLOAD_GRACE_S, UPLOADER
+    UPLOAD_EVERY_S = env_number("RUNNER_UPLOAD_EVERY_S", 60.0) or 60.0
+    UPLOAD_SETTLE_S = env_number("RUNNER_UPLOAD_SETTLE_S", 30.0)
+    UPLOAD_GRACE_S = env_number("RUNNER_UPLOAD_GRACE_S", 300.0)
+    if UPLOAD_GRACE_S > UPLOAD_GRACE_MAX_S:
+        sys.stderr.write(f"runner: RUNNER_UPLOAD_GRACE_S must be at most {UPLOAD_GRACE_MAX_S:.0f} (the grace must end "
+                         f"before the image's backstop at the time limit + 600 s)\n")
+        raise SystemExit(2)
+    if not HF_WRITE_TOKEN and not HF_REPO:
+        UPLOADER = Uploader("", "", enabled=False)
+        return
+    for name, value in (("HF_WRITE_TOKEN", HF_WRITE_TOKEN), ("HF_REPO", HF_REPO)):
+        if not value:
+            sys.stderr.write(f"runner: {name} is not set (HF_WRITE_TOKEN and HF_REPO go together)\n")
+            raise SystemExit(2)
+    if not HF_TOKEN_RE.match(HF_WRITE_TOKEN):
+        sys.stderr.write("runner: HF_WRITE_TOKEN is not a Hugging Face token (hf_ and at least 20 letters or digits)\n")
+        raise SystemExit(2)
+    if not HF_REPO_RE.match(HF_REPO):
+        sys.stderr.write("runner: HF_REPO must look like owner/name (letters, digits, _ . -)\n")
+        raise SystemExit(2)
+    if not TOKEN:
+        sys.stderr.write("runner: HF_WRITE_TOKEN needs RUNNER_TOKEN: the upload is for a rented machine only\n")
+        raise SystemExit(2)
+    UPLOADER = Uploader(HF_WRITE_TOKEN, HF_REPO)
 
 
 def stop_for_limit(reason):
     """Stop the training child, save its status and leave with code 3. Needs no request from the app."""
     print(f"runner: {reason}", flush=True)
+    UPLOADER.stopping = True                         # after_run of the cancelled job must not start a pass without a budget
     cur = current()
     if cur:
         with cur.lock:
@@ -833,7 +1291,7 @@ def stop_for_limit(reason):
             cur.error = f"stopped: {reason}"
         cur.persist()
     try:
-        before_exit(reason, budget_s=0)
+        before_exit(reason, budget_s=UPLOAD_GRACE_S)
     except Exception as e:                           # noqa: BLE001
         sys.stderr.write(f"runner: before_exit failed: {type(e).__name__}\n")
     sys.stdout.flush()
@@ -853,7 +1311,7 @@ def watchdog():
             if deadline is not None and now >= deadline:
                 stop_for_limit("time limit reached")
             if IDLE_LIMIT_S > 0:
-                if current():
+                if current() or UPLOADER.busy():          # an upload in flight is activity
                     touch()
                 elif now - LAST_ACTIVITY >= IDLE_LIMIT_S:
                     stop_for_limit("idle limit reached")
@@ -1132,6 +1590,7 @@ class Handler(BaseHTTPRequestHandler):
             total = b.get("total_steps") or (config_total_steps(inline) if inline is not None else config_steps(cfg_path))
             j = Job(name, cfg_path, out_dir, int(total) if total else None)
             JOBS[name] = j
+        UPLOADER.begin(j)
         j.start()
         return self.send_json(201, j.snapshot())
 
@@ -1155,6 +1614,9 @@ def main():
         limits.append(f"idle limit {IDLE_LIMIT_S:.0f} s")
     print(f"sprite-studio trainer runner on {HOST}:{PORT}  (run: {' '.join(command('<config>'))}; outputs: {OUTPUT_ROOT}; "
           f"token: {'set' if TOKEN else 'none'}; {', '.join(limits) or 'no time limit'})", flush=True)
+    if UPLOADER.enabled:
+        limits.append(f"uploads to {UPLOADER.repo}")
+        threading.Thread(target=UPLOADER.loop, daemon=True, name="uploader").start()
     if DEADLINE is not None or IDLE_LIMIT_S > 0:
         threading.Thread(target=watchdog, daemon=True, name="watchdog").start()
 

@@ -293,12 +293,14 @@ def test_auth_and_secrets():
     # the child scrub also covers the write keys
     box = Box()
     try:
-        p = box.start(HF_WRITE_TOKEN="hf_write_" + "x" * 20, RUNPOD_API_KEY="rpa_" + "y" * 20, FAKE_STEPS="3")
+        # since ss-m10t8 a HF_WRITE_TOKEN needs HF_REPO, the token form and RUNNER_TOKEN (else the runner exits 2)
+        p = box.start(token=TOKEN, HF_WRITE_TOKEN="hf_" + "x" * 30, HF_REPO="test/sprite-studio-loras",
+                      RUNPOD_API_KEY="rpa_" + "y" * 20, FAKE_STEPS="3")
         box.wait_up(p)
         make_config(box, "scrub")
-        call(p, "POST", "/jobs", {"name": "scrub", "config_path": str(box.configs / "scrub.yaml")})
-        wait_status(p, "scrub", None)
-        s, js, _ = call(p, "GET", "/jobs/scrub")
+        call(p, "POST", "/jobs", {"name": "scrub", "config_path": str(box.configs / "scrub.yaml")}, token=TOKEN)
+        wait_status(p, "scrub", TOKEN)
+        s, js, _ = call(p, "GET", "/jobs/scrub", token=TOKEN)
         check("token-in-env: no" in "\n".join(js["log_tail"]), "secrets: HF_WRITE_TOKEN and RUNPOD_API_KEY are not passed to the child")
     finally:
         box.close()
