@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -67,7 +68,7 @@ class Box:
         self.procs = []
 
     def env(self, extra=None):
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("RUNNER_", "RUN_", "FAKE_")) and k != "RUNPOD_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("RUNNER_", "RUN_", "FAKE_")) and k not in ("RUNPOD_API_KEY", "RUNPOD_POD_ID")}
         env.update(RUNNER_HOST="127.0.0.1", RUN_CMD=json.dumps([sys.executable, str(self.fake)]), RUN_CWD=str(self.dir),
                    CONFIG_ROOT=str(self.configs), OUTPUT_ROOT=str(self.output), DATASETS_ROOT=str(self.datasets),
                    RUNNER_STATE_DIR=str(self.state), RUNNER_WATCH_EVERY_S="0.2", FAKE_HEARTBEAT=str(self.heartbeat),
@@ -155,16 +156,26 @@ def wait_exit(proc, secs):
 
 
 def make_config(box, name, steps=5):
+    """A config file on disk for the config_path route (JSON text is valid YAML)."""
     box.configs.mkdir(parents=True, exist_ok=True)
     path = box.configs / f"{name}.yaml"
-    path.write_text(inline_config(box, name, steps), encoding="utf-8")
+    path.write_text(json.dumps(inline_config(box, name, steps)), encoding="utf-8")
     return path
 
 
 def inline_config(box, name, steps=5, folder=None, out=None):
-    return (f'job: extension\nconfig:\n  name: "{name}"\n  process:\n    - type: sd_trainer\n'
-            f'      training_folder: "{(out or box.output).as_posix()}"\n      datasets:\n'
-            f'        - folder_path: "{(folder or box.datasets / name).as_posix()}"\n      train:\n        steps: {steps}\n')
+    """The config object the app sends as `config` (same shape as webapp/app/training.py config_dict)."""
+    return {"job": "extension", "config": {"name": name, "process": [{
+        "type": "sd_trainer", "training_folder": str(out or box.output), "device": "cuda:0",
+        "datasets": [{"folder_path": str(folder or box.datasets / name), "caption_ext": "txt"}],
+        "train": {"steps": steps}}]}}
+
+
+def with_process(box, name, **changes):
+    """inline_config with extra / replaced keys in the one process entry."""
+    cfg = inline_config(box, name)
+    cfg["config"]["process"][0].update(changes)
+    return cfg
 
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 40
@@ -441,25 +452,294 @@ def test_inline_config():
     try:
         p = box.start()
         box.wait_up(p)
-        s, js, _ = call(p, "POST", "/jobs", {"name": "inl", "config": inline_config(box, "inl")})
-        check(s == 201, f"config: a run from `config` starts ({s} {js})")
+        st, js, _ = call(p, "POST", "/jobs", {"name": "inl", "config": inline_config(box, "inl")})
+        check(st == 201, f"config: a run from `config` (a JSON object) starts ({st} {js})")
         check(wait_status(p, "inl", None) == "done", "config: it reaches done")
-        check((box.configs / "inl.yaml").read_text(encoding="utf-8") == inline_config(box, "inl"), "config: written to CONFIG_ROOT/<name>.yaml")
-        check(js["total_steps"] == 5, f"config: total steps come from the inline text ({js['total_steps']})")
+        written = json.loads((box.configs / "inl.json").read_text(encoding="utf-8"))
+        check(written == inline_config(box, "inl"), "config: written to CONFIG_ROOT/<name>.json from the parsed object")
+        check(js["total_steps"] == 5, f"config: total steps come from the inline object ({js['total_steps']})")
         out = Path(tempfile.gettempdir()) / "elsewhere"
-        for label, text in (("folder_path outside", inline_config(box, "x", folder=out)),
-                            ("folder_path with ..", inline_config(box, "x", folder=box.datasets / ".." / "x")),
-                            ("training_folder outside", inline_config(box, "x", out=out)),
-                            ("a flow-style folder_path", "datasets: [{folder_path: /etc}]\n"),
-                            ("more than 256 KiB", "# " + "x" * 262200 + "\n")):
-            s, js, _ = call(p, "POST", "/jobs", {"name": "bad", "config": text})
-            check(s == 400 and not (box.configs / "bad.yaml").exists(), f"config: {label} -> 400, nothing written ({s} {js.get('error') if js else ''})")
-        s, js, _ = call(p, "POST", "/jobs", {"name": "both", "config": inline_config(box, "both"), "config_path": str(box.configs / "inl.yaml")})
-        check(s == 400 and "not both" in js["error"], f"config: config and config_path together -> 400 ({s})")
-        s, js, _ = call(p, "POST", "/jobs", {"name": "num", "config": 5})
-        check(s == 400, "config: a config that is not a string -> 400")
+        one = inline_config(box, "bad")["config"]["process"][0]
+        bad = [
+            ("folder_path outside", inline_config(box, "bad", folder=out)),
+            ("folder_path with ..", inline_config(box, "bad", folder=box.datasets / ".." / "x")),
+            ("folder_path is the datasets root", inline_config(box, "bad", folder=box.datasets)),
+            ("folder_path in .incoming", inline_config(box, "bad", folder=box.datasets / ".incoming" / "x")),
+            ("training_folder outside", inline_config(box, "bad", out=out)),
+            ("config.name that climbs out of the output folder", inline_config(box, "../../etc/cron.d")),
+            ("config.name that is not the job name", inline_config(box, "other")),
+            ("control_path", with_process(box, "bad", control_path="/root")),
+            ("mask_path in a dataset", with_process(box, "bad", datasets=[{"folder_path": str(box.datasets / "bad"), "mask_path": "/root"}])),
+            ("clip_image_path in a dataset", with_process(box, "bad", datasets=[{"folder_path": str(box.datasets / "bad"), "clip_image_path": "/etc"}])),
+            ("a remote model that is not on the list", with_process(box, "bad", model={"name_or_path": "someone/any-repo"})),
+            ("a local model path", with_process(box, "bad", model={"name_or_path": "/etc"})),
+            ("an adapter that is not on the list", with_process(box, "bad", model={"assistant_lora_path": "someone/x/y.safetensors"})),
+            ("push_to_hub", with_process(box, "bad", save={"push_to_hub": True, "hf_repo_id": "someone/x"})),
+            ("hf_repo_id alone", with_process(box, "bad", save={"hf_repo_id": "someone/x"})),
+            ("an unknown top-level key", {**inline_config(box, "bad"), "extra": 1}),
+            ("an unknown process key", with_process(box, "bad", python_hook="x")),
+            ("two process entries", {"job": "extension", "config": {"name": "bad", "process": [one, one]}}),
+            ("text instead of an object", "job: extension\nconfig:\n  name: bad\n"),
+            ("a list", [1]),
+            ("a number", 5),
+            ("more than 256 KiB", with_process(box, "bad", trigger_word="x" * 262200)),
+        ]
+        for label, cfg in bad:
+            st, js, _ = call(p, "POST", "/jobs", {"name": "bad", "config": cfg})
+            check(st == 400 and not (box.configs / "bad.json").exists(), f"config: {label} -> 400, nothing written ({st} {js.get('error') if js else ''})")
+        # The old bypasses as raw bodies: a key and a value written with \u escapes, and NaN.
+        escaped_key = '{"name":"bad","config":{"job":"extension","config":{"name":"bad","process":[{"datasets":[{"folder\\u005fpath":"/etc"}]}]}}}'
+        escaped_val = '{"name":"bad","config":{"job":"extension","config":{"name":"bad","process":[{"type":"sd_trainer","training_folder":"/tmp/\\u002e\\u002e/x"}]}}}'
+        nan_body = '{"name":"bad","config":{"job":"extension","config":{"name":"bad","process":[{"train":{"lr":NaN}}]}}}'
+        for label, raw in (("an escaped key", escaped_key), ("an escaped value", escaped_val), ("NaN", nan_body)):
+            st, js, _ = call(p, "POST", "/jobs", raw=raw.encode(), headers={"Content-Type": "application/json"})
+            check(st == 400 and not (box.configs / "bad.json").exists(), f"config: {label} -> 400 ({st})")
+        st, js, _ = call(p, "POST", "/jobs", {"name": "both", "config": inline_config(box, "both"), "config_path": str(box.configs / "inl.json")})
+        check(st == 400 and "not both" in js["error"], f"config: config and config_path together -> 400 ({st})")
+        for name in ("job\n", "a b", "../x"):
+            st, js, _ = call(p, "POST", "/jobs", {"name": name, "config": inline_config(box, "job")})
+            check(st == 400, f"names: {name!r} -> 400")
+        check(not runner.NAME_RE.match("job\n") and not runner.ENTRY_RE.match("a.png\n"), "names: a trailing newline does not match NAME_RE / ENTRY_RE")
     finally:
         box.close()
+
+
+def test_check_inline_config_in_process():
+    """The checker alone (no HTTP)."""
+    box = Box()
+    old = (runner.OUTPUT_ROOT, runner.DATASETS_ROOT)
+    try:
+        runner.OUTPUT_ROOT, runner.DATASETS_ROOT = box.output, box.datasets
+        check(runner.check_inline_config(inline_config(box, "ok"), "ok") is None, "checker: the app's shape passes")
+        good_model = with_process(box, "ok", model={"name_or_path": "Tongyi-MAI/Z-Image-Turbo", "arch": "zimage"})
+        check(runner.check_inline_config(good_model, "ok") is None, "checker: the allowed base model passes")
+        why = runner.check_inline_config(with_process(box, "ok", save={"push_to_hub": True}), "ok")
+        check(why and "push_to_hub" in why, f"checker: the refusal names the key ({why})")
+        why = runner.check_inline_config(with_process(box, "ok", train={"steps": True}), "ok")
+        check(why and "whole number" in why, "checker: a boolean is not a number")
+    finally:
+        runner.OUTPUT_ROOT, runner.DATASETS_ROOT = old
+        box.close()
+
+
+def raw_request(p, method, path, content_length):
+    conn = http.client.HTTPConnection("127.0.0.1", p.port, timeout=10)
+    conn.putrequest(method, path)
+    conn.putheader("Authorization", "Bearer " + TOKEN)
+    conn.putheader("Content-Length", content_length)
+    conn.endheaders()
+    try:
+        return conn.getresponse().status
+    except (http.client.HTTPException, OSError) as e:
+        return type(e).__name__
+    finally:
+        conn.close()
+
+
+def test_small_hardening():
+    box = Box()
+    try:
+        p = box.start(token=TOKEN)
+        box.wait_up(p)
+        for label, cl in (("a negative", "-1"), ("a non-number", "abc"), ("a unicode digit", "²")):
+            r = raw_request(p, "POST", "/jobs", cl)
+            check(r in (400, 411), f"hardening: {label} Content-Length on a JSON route -> 400/411 ({r})")
+        r = raw_request(p, "PUT", "/datasets/up", "²")
+        check(r == 411, f"hardening: a unicode digit as the upload length -> 411 ({r})")
+        check("Traceback" not in box.logs(p), "hardening: no traceback in the logs")
+        st, js, _ = call(p, "PUT", "/datasets/job%0A", raw=make_zip([("a.png", PNG)]), token=TOKEN)
+        folders = [d for d in os.listdir(box.datasets) if d != ".incoming"] if box.datasets.exists() else []
+        check(st == 400 and not folders, f"hardening: PUT /datasets/job%0A -> 400, no folder ({st})")
+        p2 = box.start(token=" " * 40)
+        check(wait_exit(p2, 10) == 2, "hardening: a token of spaces exits 2")
+        # one upload at a time
+        big = make_zip([("a.png", PNG + os.urandom(150000))])
+        slow = http.client.HTTPConnection("127.0.0.1", p.port, timeout=20)
+        slow.putrequest("PUT", "/datasets/slow")
+        slow.putheader("Authorization", "Bearer " + TOKEN)
+        slow.putheader("Content-Length", str(len(big)))
+        slow.endheaders()
+        slow.send(big[:1000])
+        time.sleep(0.5)
+        st, js, _ = call(p, "PUT", "/datasets/other", raw=make_zip([("a.png", PNG)]), token=TOKEN)
+        check(st == 409 and "another upload" in js["error"], f"hardening: a second upload while one is running -> 409 ({st})")
+        slow.send(big[1000:])
+        slow.getresponse().read()
+        slow.close()
+        st, js, _ = call(p, "PUT", "/datasets/other", raw=make_zip([("a.png", PNG)]), token=TOKEN)
+        check(st == 201, f"hardening: ... and the next one works ({st})")
+    finally:
+        box.close()
+
+
+def write_boot(box, **d):
+    box.state.mkdir(parents=True, exist_ok=True)
+    (box.state / "boot.json").write_text(json.dumps(d), encoding="utf-8")
+
+
+def test_boot_json_is_per_pod():
+    # another pod's deadline, already past, on a reused volume: the new pod starts a fresh clock
+    box = Box()
+    try:
+        write_boot(box, pod="oldpod123456", first_start=time.time() - 100, deadline=time.time() - 10)
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3600", RUNPOD_POD_ID="newpod654321")
+        up = box.wait_up(p)
+        st, js, _ = call(p, "GET", "/health", token=TOKEN) if up else (0, {}, {})
+        check(up and p.poll() is None and st == 200 and 3500 < js["deadline_in_s"] <= 3600,
+              f"boot: another pod's expired boot.json is ignored, the new pod gets a fresh clock ({js.get('deadline_in_s')})")
+        boot = json.loads((box.state / "boot.json").read_text(encoding="utf-8"))
+        check(boot["pod"] == "newpod654321" and boot["deadline"] > time.time() + 3000, "boot: boot.json now belongs to the new pod")
+    finally:
+        box.close()
+    # another pod's unexpired deadline must not shorten the new pod either
+    box = Box()
+    try:
+        write_boot(box, pod="oldpod123456", first_start=time.time() - 100, deadline=time.time() + 30)
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3600", RUNPOD_POD_ID="newpod654321")
+        box.wait_up(p)
+        st, js, _ = call(p, "GET", "/health", token=TOKEN)
+        check(js.get("deadline_in_s", 0) > 3000, f"boot: another pod's unexpired deadline does not shorten the new pod ({js.get('deadline_in_s')})")
+    finally:
+        box.close()
+    # the same pod restarting keeps its clock; a file with no pod id binds nobody; RUNNER_BOOT_ID wins
+    box = Box()
+    try:
+        write_boot(box, pod="samepod123456", first_start=time.time() - 100, deadline=time.time() - 10)
+        t0 = time.time()
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3600", RUNPOD_POD_ID="samepod123456")
+        code = wait_exit(p, 10)
+        check(code == 3 and time.time() - t0 < 6, f"boot: the same pod restarting past its deadline still exits 3 ({code})")
+        write_boot(box, first_start=time.time() - 100, deadline=time.time() - 10)
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3600", RUNPOD_POD_ID="samepod123456")
+        box.wait_up(p)
+        check(p.poll() is None, "boot: a boot.json with no pod id does not bind a pod (fresh clock)")
+        write_boot(box, pod="bootid-1", first_start=time.time() - 100, deadline=time.time() - 10)
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3600", RUNPOD_POD_ID="whatever12345", RUNNER_BOOT_ID="bootid-1")
+        check(wait_exit(p, 10) == 3, "boot: RUNNER_BOOT_ID is the id when given")
+    finally:
+        box.close()
+
+
+def test_watchdog_fails_closed():
+    box = Box()
+    try:
+        p = box.start(token=TOKEN, RUNNER_WATCH_EVERY_S="inf")
+        check(wait_exit(p, 10) == 2 and "RUNNER_WATCH_EVERY_S" in box.logs(p), "watchdog: RUNNER_WATCH_EVERY_S=inf exits 2 naming the variable")
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_MAX_S="inf")
+        check(wait_exit(p, 10) == 2 and "RUNNER_TIME_LIMIT_MAX_S" in box.logs(p), "watchdog: RUNNER_TIME_LIMIT_MAX_S=inf exits 2")
+        p = box.start(token=TOKEN, RUNNER_WATCH_EVERY_S="nan")
+        check(wait_exit(p, 10) == 2, "watchdog: nan exits 2")
+    finally:
+        box.close()
+    # an exception inside the loop ends the runner; it must not go on with no limit
+    saved = (runner.current, runner._exit, runner.IDLE_LIMIT_S, runner.WATCH_EVERY_S, runner.DEADLINE)
+    exits = []
+
+    def boom():
+        raise RuntimeError("test")
+    try:
+        runner.current, runner._exit = boom, exits.append
+        runner.IDLE_LIMIT_S, runner.WATCH_EVERY_S, runner.DEADLINE = 1.0, 0.01, None
+        t = threading.Thread(target=runner.watchdog, daemon=True)
+        t.start()
+        t.join(5)
+        check(exits == [3] and not t.is_alive(), f"watchdog: an exception in the loop calls exit(3) ({exits})")
+    finally:
+        runner.current, runner._exit, runner.IDLE_LIMIT_S, runner.WATCH_EVERY_S, runner.DEADLINE = saved
+
+
+STUBBORN = r"""
+import os, signal, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)          # ignores the polite stop: only SIGKILL ends it
+open(os.environ["FAKE_PIDFILE"], "w").write(str(os.getpid()))
+hb = os.environ["FAKE_HEARTBEAT"]
+while True:
+    open(hb, "w").write(str(time.time()))
+    time.sleep(0.1)
+"""
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def read_pid(path, secs=10):
+    end = time.time() + secs
+    while time.time() < end:
+        try:
+            return int(path.read_text())
+        except (OSError, ValueError):
+            time.sleep(0.1)
+    return 0
+
+
+def test_linux_kill_path():
+    """killpg(SIGTERM), the grace period, killpg(SIGKILL) and the runner's SIGTERM handler, with a trainer that ignores
+    SIGTERM. POSIX only: on Windows _kill uses taskkill and there are no signals, so it is skipped there with this
+    reason and runs in a Linux container:
+        docker run --rm -v <repo>:/w:ro python:3.12-slim python /w/tests/test_trainer_runner.py kill"""
+    if os.name == "nt":
+        print("SKIP linux kill path: needs POSIX signals and process groups (Windows uses taskkill); run it in a Linux container")
+        return
+    import signal
+    box = Box()
+    pids = []
+    try:
+        pidfile = box.dir / "child.pid"
+        stub = box.dir / "stubborn.py"
+        stub.write_text(STUBBORN, encoding="utf-8")
+        extra = dict(RUN_CMD=json.dumps([sys.executable, str(stub)]), FAKE_PIDFILE=str(pidfile), RUNNER_KILL_GRACE_S="1")
+        # 1. the time limit
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="3", **extra)
+        box.wait_up(p)
+        t0 = time.time()
+        call(p, "POST", "/jobs", {"name": "stub", "config": inline_config(box, "stub", 2000)}, token=TOKEN)
+        pid = read_pid(pidfile)
+        pids.append(pid)
+        code = wait_exit(p, 25)
+        took = time.time() - t0
+        time.sleep(0.5)
+        check(pid and code == 3 and not alive(pid), f"kill: a trainer that ignores SIGTERM is SIGKILLed at the limit, the runner exits 3 ({code}, child alive: {alive(pid)})")
+        check(took < 3 + 1 + 5 + 4, f"kill: it took the limit + grace + slack ({took:.1f}s)")
+        m1 = box.heartbeat.stat().st_mtime
+        time.sleep(0.6)
+        check(m1 == box.heartbeat.stat().st_mtime, "kill: the heartbeat stops")
+        st = json.loads((box.output / "stub" / "runner_status.json").read_text(encoding="utf-8"))
+        check(st["status"] == "cancelled" and "time limit" in (st["error"] or ""), f"kill: status is cancelled with the limit as the reason ({st['status']})")
+        # 2. a cancel through the API (the same _kill)
+        pidfile.unlink()
+        p = box.start(token=TOKEN, RUNNER_TIME_LIMIT_S="600", RUNNER_STATE_DIR=str(box.dir / "state2"), **extra)
+        box.wait_up(p)
+        call(p, "POST", "/jobs", {"name": "stub2", "config": inline_config(box, "stub2", 2000)}, token=TOKEN)
+        pid = read_pid(pidfile)
+        pids.append(pid)
+        call(p, "POST", "/jobs/stub2/cancel", {}, token=TOKEN)
+        check(pid and wait_status(p, "stub2", TOKEN, secs=15) == "cancelled" and not alive(pid), "kill: cancel also reaches SIGKILL for a trainer that ignores SIGTERM")
+        # 3. the runner gets SIGTERM (a RunPod stop): it leaves with code 0
+        pidfile.unlink()
+        call(p, "POST", "/jobs", {"name": "stub3", "config": inline_config(box, "stub3", 2000)}, token=TOKEN)
+        pids.append(read_pid(pidfile))
+        p.send_signal(signal.SIGTERM)
+        check(wait_exit(p, 15) == 0, "kill: SIGTERM to the runner -> exit code 0")
+    finally:
+        for pid in pids:
+            if pid:
+                try:
+                    os.kill(pid, 9)
+                except OSError:
+                    pass
+        box.close()
+
+
+def test_readme_is_honest_about_the_token():
+    text = (Path(ROOT) / "trainer" / "README.md").read_text(encoding="utf-8")
+    check("/proc/1/environ" in text and "accidental" in text.lower(), "readme: says what the token scrub covers (accidental dumps, /proc/1/environ)")
+    check("training process never sees it" not in text, "readme: no longer claims the training process never sees the token")
+    check("JSON object" in text and "push_to_hub" in text, "readme: the config route describes the JSON object and the refusals")
 
 
 def test_time_and_idle_limits():
@@ -556,14 +836,26 @@ def test_time_and_idle_limits():
         box.close()
 
 
-def run():
+def run(only=None):
     del RESULTS[:]
+    if only:                                          # python tests/test_trainer_runner.py kill  -> runs test_*kill*
+        for name, fn in sorted(globals().items()):
+            if name.startswith("test_") and name != "test_trainer_runner" and callable(fn) and any(o in name for o in only):
+                fn()
+        print("\n%d/%d passed" % (sum(RESULTS), len(RESULTS)))
+        return all(RESULTS)
     test_bind_and_config()
     test_auth_and_secrets()
     test_no_token_local()
     test_extract_dataset()
     test_upload_http()
     test_inline_config()
+    test_check_inline_config_in_process()
+    test_small_hardening()
+    test_boot_json_is_per_pod()
+    test_watchdog_fails_closed()
+    test_linux_kill_path()
+    test_readme_is_honest_about_the_token()
     test_time_and_idle_limits()
     print("\n%d/%d passed" % (sum(RESULTS), len(RESULTS)))
     return all(RESULTS)
@@ -574,4 +866,4 @@ def test_trainer_runner():
 
 
 if __name__ == "__main__":
-    sys.exit(0 if run() else 1)
+    sys.exit(0 if run(sys.argv[1:]) else 1)

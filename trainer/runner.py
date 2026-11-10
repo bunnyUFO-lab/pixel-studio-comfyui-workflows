@@ -10,7 +10,8 @@ API (JSON; with RUNNER_TOKEN set every route but a reduced /health needs `Author
   GET  /jobs                      -> [{name, status, step, total_steps}]
   POST /jobs {name, config_path | config, output_dir?, total_steps?}
                                   starts `RUN_CMD <config_path>` (one job at a time; 409 while another runs);
-                                  `config` is the YAML text itself, written to CONFIG_ROOT/<name>.yaml
+                                  `config` is the ai-toolkit config as a JSON object (not text), checked against an
+                                  allowlist and written to CONFIG_ROOT/<name>.json
   PUT  /datasets/<name>           body: a zip of images and .txt captions (flat) -> DATASETS_ROOT/<name>/
   GET  /datasets/<name>           -> {name, images, captions, bytes}
   POST /deadline {seconds}        moves the time limit (60-86400 s from now, never past the maximum)
@@ -38,6 +39,7 @@ samples/<time>_000000250_0.jpg). A copy of the log is kept in OUTPUT_ROOT/<name>
 runner_status.json, so a restarted runner still reports finished runs.
 """
 import collections
+import math
 import hashlib
 import hmac
 import json
@@ -94,12 +96,13 @@ STATE_LOCK = threading.Lock()
 LAST_ACTIVITY = time.time()
 LOG_LINES = 400                       # kept in memory per job
 TAIL = 40                             # lines returned in log_tail
-KILL_GRACE = 15                       # seconds between SIGTERM and SIGKILL on cancel
+KILL_GRACE = float(os.environ.get("RUNNER_KILL_GRACE_S", "15"))   # seconds between SIGTERM and SIGKILL on cancel
+_exit = os._exit                      # tests replace it
 
-NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$")
-ENTRY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.(png|jpg|jpeg|webp|txt)$", re.I)
-CONFIG_PATH_RE = re.compile(r"^\s*(?:-\s+)?(training_folder|folder_path):\s*(.+)$")
-CONFIG_KEY_RE = re.compile(r"\b(?:training_folder|folder_path)\b")
+NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")           # \Z, not $: "job\n" must not match
+ENTRY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.(png|jpg|jpeg|webp|txt)\Z", re.I)
+TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,}\Z")                        # what secrets.token_urlsafe makes
+LENGTH_RE = re.compile(r"[0-9]{1,15}\Z")                              # ASCII digits only ("\u00b2".isdigit() is True)
 BAR_RE = re.compile(r"^(?P<desc>.*?):?\s*(?P<pct>\d{1,3})%\|(?P<bar>[^|]*)\|\s*(?P<n>\d+)/(?P<total>\d+)\s*(?:\[(?P<info>[^\]]*)\]?)?")
 RATE_RE = re.compile(r"(?P<v>\d+(?:\.\d+)?)\s*(?P<u>s/it|it/s)")
 LOSS_RE = re.compile(r"loss:\s*(?P<v>[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)")
@@ -435,6 +438,7 @@ class Job:
 
 JOBS = {}
 JOBS_LOCK = threading.Lock()
+UPLOAD_LOCK = threading.Lock()
 
 
 def current():
@@ -616,36 +620,145 @@ def extract_dataset(zip_path, root, name):
 
 
 # ----------------------------------------------------------------- inline config
-def check_inline_config(text):
-    """None when the YAML text may run, else the reason. Every folder_path / training_folder must stay inside
-    DATASETS_ROOT / OUTPUT_ROOT; a key written in a way these line checks cannot read is refused."""
-    if len(text.encode("utf-8")) > CONFIG_MAX:
-        return f"config is larger than {CONFIG_MAX} bytes"
-    matched = 0
-    for line in text.splitlines():
-        m = CONFIG_PATH_RE.match(line)
-        if not m:
-            continue
-        matched += 1
-        value = m.group(2).strip()
-        if value[:1] in ("\"", "'"):
-            value = value[1:].split(value[0], 1)[0]
-        else:
-            value = value.split(" #", 1)[0].strip()
-        root, key = (OUTPUT_ROOT, "training_folder") if m.group(1) == "training_folder" else (DATASETS_ROOT, "folder_path")
-        if not value or not inside(root, value):
-            return f"{key} must be inside {root}"
-    if len(CONFIG_KEY_RE.findall(text)) != matched:
-        return "training_folder and folder_path must each be on a line of their own (key: value)"
+# `config` arrives as a JSON object, is checked key by key against this allowlist and is written out again from the
+# parsed object (json.dumps), so what is checked is exactly what ai-toolkit reads. No text is ever scanned: a text
+# check and a YAML parser disagree about escapes, quoting and flow style. Any key not listed is refused, which keeps
+# out every other path key (control_path, mask_path, ...) and push_to_hub / hf_repo_id. The keys are the ones the app
+# writes (webapp/app/training.py config_dict); a new ai-toolkit option is added here on purpose, not by accident.
+CONFIG_MODELS = ("Tongyi-MAI/Z-Image-Turbo",)        # remote model names the runner may download
+CONFIG_ADAPTERS = ("ostris/zimage_turbo_training_adapter/zimage_turbo_training_adapter_v2.safetensors",)
+_QTYPES = ("one_of", ("qfloat8", "qint8", "qint4", "float8", "uint8"))
+_DTYPES = ("one_of", ("bf16", "fp16", "float16", "float32", "fp32"))
+CONFIG_SCHEMA = {
+    "job": ("one_of", ("extension",)),
+    "config": {
+        "name": "job_name",
+        "process": ("list", 1, {
+            "type": ("one_of", ("sd_trainer",)),
+            "training_folder": "output_path",
+            "device": ("one_of", ("cuda:0", "cuda")),
+            "trigger_word": "str",
+            "network": {"type": ("one_of", ("lora",)), "linear": "int", "linear_alpha": "int"},
+            "save": {"dtype": _DTYPES, "save_every": "int", "max_step_saves_to_keep": "int"},
+            "datasets": ("list", 8, {
+                "folder_path": "dataset_path", "caption_ext": ("one_of", ("txt",)), "caption_dropout_rate": "num",
+                "cache_latents_to_disk": "bool", "resolution": ("list", 8, "int"), "flip_x": "bool", "flip_y": "bool",
+                "is_reg": "bool", "num_repeats": "int"}),
+            "train": {
+                "batch_size": "int", "steps": "int", "gradient_accumulation": "int", "gradient_accumulation_steps": "int",
+                "train_unet": "bool", "train_text_encoder": "bool", "gradient_checkpointing": "bool",
+                "noise_scheduler": ("one_of", ("flowmatch", "ddpm")), "timestep_type": "str", "content_or_style": "str",
+                "optimizer": ("one_of", ("adamw8bit", "adamw", "adafactor", "prodigy")), "lr": "num",
+                "optimizer_params": {"weight_decay": "num"}, "dtype": _DTYPES, "cache_text_embeddings": "bool",
+                "unload_text_encoder": "bool", "skip_first_sample": "bool", "disable_sampling": "bool"},
+            "model": {
+                "name_or_path": ("one_of", CONFIG_MODELS), "arch": ("one_of", ("zimage",)),
+                "assistant_lora_path": ("one_of", CONFIG_ADAPTERS), "quantize": "bool", "qtype": _QTYPES,
+                "quantize_te": "bool", "qtype_te": _QTYPES, "low_vram": "bool"},
+            "sample": {
+                "sampler": ("one_of", ("flowmatch", "ddpm")), "sample_every": "int", "width": "int", "height": "int",
+                "prompts": ("list", 40, "str"), "neg": "str", "seed": "int", "walk_seed": "bool", "guidance_scale": "num",
+                "sample_steps": "int"},
+        }),
+    },
+    "meta": {"name": "job_name", "version": "str"},
+}
+
+
+def confined_path(root, value, what):
+    """None when `value` is an absolute path inside `root` (symlinks and .. resolved), else the reason."""
+    if not isinstance(value, str) or not value or "\0" in value or not os.path.isabs(value):
+        return f"{what} must be an absolute path inside {root}"
+    if not inside(root, value):
+        return f"{what} must be inside {root}"
     return None
 
 
+def check_value(value, spec, where, job):
+    """None when `value` fits `spec`, else a sentence naming `where`."""
+    if isinstance(spec, dict):
+        if not isinstance(value, dict):
+            return f"{where}: must be an object"
+        for k, v in value.items():
+            if k not in spec:
+                return f"{where}.{k}: not an allowed key"
+            why = check_value(v, spec[k], f"{where}.{k}", job)
+            if why:
+                return why
+        return None
+    if isinstance(spec, tuple) and spec[0] == "list":
+        if not isinstance(value, list) or len(value) > spec[1] or (spec[1] == 1 and len(value) != 1):
+            return f"{where}: must be a list of {'exactly 1' if spec[1] == 1 else f'at most {spec[1]}'} item(s)"
+        for n, v in enumerate(value):
+            why = check_value(v, spec[2], f"{where}[{n}]", job)
+            if why:
+                return why
+        return None
+    if isinstance(spec, tuple) and spec[0] == "one_of":
+        if not isinstance(value, str) or value not in spec[1]:
+            return f"{where}: must be one of {', '.join(spec[1])}"
+        return None
+    if spec == "job_name":
+        return None if value == job else f"{where}: must equal the job name {job}"
+    if spec == "output_path":
+        return confined_path(OUTPUT_ROOT, value, where)
+    if spec == "dataset_path":
+        why = confined_path(DATASETS_ROOT, value, where)
+        if why:
+            return why
+        if Path(value).resolve() == Path(DATASETS_ROOT).resolve() or inside(Path(DATASETS_ROOT) / ".incoming", value):
+            return f"{where}: must name one dataset folder inside {DATASETS_ROOT}"
+        return None
+    if spec == "str":
+        return None if isinstance(value, str) and len(value) <= 4000 and "\0" not in value else f"{where}: must be text (4000 characters at most)"
+    if spec == "int":
+        return None if isinstance(value, int) and not isinstance(value, bool) and abs(value) <= 10**9 else f"{where}: must be a whole number"
+    if spec == "num":
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        return None if ok else f"{where}: must be a number"
+    if spec == "bool":
+        return None if isinstance(value, bool) else f"{where}: must be true or false"
+    return f"{where}: not allowed"
+
+
+def check_inline_config(cfg, name):
+    """None when the config object may run, else the reason (the first problem found)."""
+    if not isinstance(cfg, dict):
+        return "config must be a JSON object (the ai-toolkit config), not text"
+    try:
+        size = len(json.dumps(cfg, allow_nan=False).encode("utf-8"))
+    except (ValueError, TypeError):
+        return "config must be plain JSON"
+    if size > CONFIG_MAX:
+        return f"config is larger than {CONFIG_MAX} bytes"
+    if not isinstance(cfg.get("config"), dict) or cfg["config"].get("name") != name:
+        return f"config.name must equal the job name {name}"
+    return check_value(cfg, CONFIG_SCHEMA, "$", name)
+
+
+def config_total_steps(cfg):
+    try:
+        n = cfg["config"]["process"][0]["train"]["steps"]
+        return n if isinstance(n, int) and n > 0 else None
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
 # ----------------------------------------------------------------- time limit and idle limit
+def boot_id():
+    """Who this clock belongs to: RUNNER_BOOT_ID (the app may set one) or RUNPOD_POD_ID. Empty on the PC."""
+    return (os.environ.get("RUNNER_BOOT_ID") or os.environ.get("RUNPOD_POD_ID") or "").strip()
+
+
 def read_boot():
+    """(first_start, deadline) saved by THIS pod's earlier run, else None. A boot.json written by another pod (a network
+    volume reused by a new machine) is ignored, so an old deadline never ends or shortens a new pod."""
     try:
         d = json.loads((STATE_DIR / "boot.json").read_text(encoding="utf-8"))
+        if str(d.get("pod") or "") != boot_id():
+            return None
         return float(d["first_start"]), float(d["deadline"])
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
 
 
@@ -653,7 +766,7 @@ def write_boot():
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         tmp = STATE_DIR / "boot.json.tmp"
-        tmp.write_text(json.dumps({"first_start": FIRST_START, "deadline": DEADLINE}), encoding="utf-8")
+        tmp.write_text(json.dumps({"pod": boot_id(), "first_start": FIRST_START, "deadline": DEADLINE}), encoding="utf-8")
         tmp.replace(STATE_DIR / "boot.json")
         return True
     except OSError as e:
@@ -668,24 +781,24 @@ def env_number(name, default):
         return default
     try:
         v = float(raw)
-        if v < 0 or v != v:
+        if v < 0 or not math.isfinite(v):                  # no NaN, no inf (time.sleep(inf) kills the watchdog)
             raise ValueError
         return v
     except ValueError:
-        sys.stderr.write(f"runner: {name} must be a number of seconds, 0 or more\n")
+        sys.stderr.write(f"runner: {name} must be a finite number of seconds, 0 or more\n")
         raise SystemExit(2)
 
 
 def configure():
     """Validate the token and limits from the environment (exit 2 on a bad value) and start the clock."""
     global TIME_LIMIT_S, TIME_LIMIT_MAX_S, IDLE_LIMIT_S, WATCH_EVERY_S, DEADLINE, FIRST_START
-    if TOKEN and len(TOKEN) < TOKEN_MIN:
-        sys.stderr.write(f"runner: RUNNER_TOKEN must be at least {TOKEN_MIN} characters\n")
+    if TOKEN and not TOKEN_RE.match(TOKEN):
+        sys.stderr.write(f"runner: RUNNER_TOKEN must be at least {TOKEN_MIN} characters from A-Z a-z 0-9 _ -\n")
         raise SystemExit(2)
     TIME_LIMIT_MAX_S = env_number("RUNNER_TIME_LIMIT_MAX_S", 86400.0)
     TIME_LIMIT_S = env_number("RUNNER_TIME_LIMIT_S", 10800.0 if TOKEN else 0.0)
     IDLE_LIMIT_S = env_number("RUNNER_IDLE_LIMIT_S", 1800.0 if TOKEN else 0.0)
-    WATCH_EVERY_S = env_number("RUNNER_WATCH_EVERY_S", 5.0) or 5.0
+    WATCH_EVERY_S = min(env_number("RUNNER_WATCH_EVERY_S", 5.0) or 5.0, 60.0)
     if TIME_LIMIT_S > TIME_LIMIT_MAX_S:
         sys.stderr.write(f"runner: RUNNER_TIME_LIMIT_S ({TIME_LIMIT_S:.0f}) is above RUNNER_TIME_LIMIT_MAX_S "
                          f"({TIME_LIMIT_MAX_S:.0f})\n")
@@ -725,22 +838,31 @@ def stop_for_limit(reason):
         sys.stderr.write(f"runner: before_exit failed: {type(e).__name__}\n")
     sys.stdout.flush()
     sys.stderr.flush()
-    os._exit(3)
+    _exit(3)
 
 
 def watchdog():
-    while True:
-        time.sleep(WATCH_EVERY_S)
-        now = time.time()
-        with STATE_LOCK:
-            deadline = DEADLINE
-        if deadline is not None and now >= deadline:
-            stop_for_limit("time limit reached")
-        if IDLE_LIMIT_S > 0:
-            if current():
-                touch()
-            elif now - LAST_ACTIVITY >= IDLE_LIMIT_S:
-                stop_for_limit("idle limit reached")
+    """Checks the deadline and the idle limit. If this loop itself fails, the runner exits (code 3) instead of going on
+    with no limit at all."""
+    try:
+        while True:
+            time.sleep(WATCH_EVERY_S)
+            now = time.time()
+            with STATE_LOCK:
+                deadline = DEADLINE
+            if deadline is not None and now >= deadline:
+                stop_for_limit("time limit reached")
+            if IDLE_LIMIT_S > 0:
+                if current():
+                    touch()
+                elif now - LAST_ACTIVITY >= IDLE_LIMIT_S:
+                    stop_for_limit("idle limit reached")
+    except BaseException as e:                        # noqa: BLE001  fail closed
+        try:
+            sys.stderr.write(f"runner: the watchdog failed ({type(e).__name__}); exiting\n")
+            sys.stderr.flush()
+        finally:
+            _exit(3)
 
 
 def deadline_in():
@@ -764,6 +886,10 @@ def set_deadline(seconds):
 
 
 # ----------------------------------------------------------------- HTTP
+def _no_constant(name):
+    raise ValueError(name)                            # NaN / Infinity are not JSON
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "sprite-studio-trainer/" + VERSION
     timeout = SOCKET_TIMEOUT                     # per socket read: a stalled client cannot hold a thread forever
@@ -795,13 +921,16 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def body(self):
-        n = int(self.headers.get("Content-Length") or 0)
+        raw = (self.headers.get("Content-Length") or "0").strip()
+        if not LENGTH_RE.match(raw):                  # negative, non-numeric or non-ASCII digits
+            return None
+        n = int(raw)
         if not n:
             return {}
         if n > BODY_MAX:
             return None
         try:
-            d = json.loads(self.rfile.read(n) or b"{}")
+            d = json.loads(self.rfile.read(n) or b"{}", parse_constant=_no_constant)
             return d if isinstance(d, dict) else {}
         except ValueError:
             return None
@@ -914,13 +1043,21 @@ class Handler(BaseHTTPRequestHandler):
         if not NAME_RE.match(name):
             return self.send_json(400, {"error": "name: letters, digits, _ . - only"}, close=True)
         raw = self.headers.get("Content-Length")
-        if raw is None or not raw.strip().isdigit():
+        if raw is None or not LENGTH_RE.match(raw.strip()):
             return self.send_json(411, {"error": "Content-Length required"}, close=True)
         length = int(raw)
         if length > UPLOAD_MAX_BYTES:
             return self.send_json(413, {"error": f"upload is larger than {UPLOAD_MAX_BYTES} bytes"}, close=True)
         if busy_with(name):
             return self.send_json(409, {"error": f"a run named {name} is queued or running"}, close=True)
+        if not UPLOAD_LOCK.acquire(blocking=False):   # one upload at a time: the free-space check is per upload
+            return self.send_json(409, {"error": "another upload is running"}, close=True)
+        try:
+            return self.take_upload(name, length)
+        finally:
+            UPLOAD_LOCK.release()
+
+    def take_upload(self, name, length):
         DATASETS_ROOT.mkdir(parents=True, exist_ok=True)
         if shutil.disk_usage(DATASETS_ROOT).free < UPLOAD_MAX_BYTES + UPLOAD_SPARE_BYTES:
             return self.send_json(507, {"error": "not enough free disk space"}, close=True)
@@ -967,12 +1104,10 @@ class Handler(BaseHTTPRequestHandler):
         if inline is not None and cfg:
             return self.send_json(400, {"error": "give config or config_path, not both"})
         if inline is not None:
-            if not isinstance(inline, str):
-                return self.send_json(400, {"error": "config must be the YAML text (a string)"})
-            why = check_inline_config(inline)
+            why = check_inline_config(inline, name)
             if why:
                 return self.send_json(400, {"error": why})
-            cfg_path = CONFIG_ROOT / f"{name}.yaml"
+            cfg_path = CONFIG_ROOT / f"{name}.json"
         else:
             cfg_path = Path(cfg)
             if not cfg or not inside(CONFIG_ROOT, cfg_path):
@@ -989,12 +1124,12 @@ class Handler(BaseHTTPRequestHandler):
             if inline is not None:
                 try:
                     CONFIG_ROOT.mkdir(parents=True, exist_ok=True)
-                    tmp = CONFIG_ROOT / f"{name}.yaml.tmp"
-                    tmp.write_text(inline, encoding="utf-8")
+                    tmp = CONFIG_ROOT / f"{name}.json.tmp"
+                    tmp.write_text(json.dumps(inline, indent=2, allow_nan=False), encoding="utf-8")
                     tmp.replace(cfg_path)
                 except OSError as e:
                     return self.send_json(500, {"error": f"could not write the config ({type(e).__name__})"})
-            total = b.get("total_steps") or config_steps(cfg_path)
+            total = b.get("total_steps") or (config_total_steps(inline) if inline is not None else config_steps(cfg_path))
             j = Job(name, cfg_path, out_dir, int(total) if total else None)
             JOBS[name] = j
         j.start()

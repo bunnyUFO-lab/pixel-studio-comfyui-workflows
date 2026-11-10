@@ -10,7 +10,9 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -54,10 +56,48 @@ class FakeRunPod(http.server.BaseHTTPRequestHandler):
 
 def run_shutdown(base, **env):
     full = {k: v for k, v in os.environ.items() if not k.startswith(("RUNPOD_", "RUNNER_"))}
-    full.update(RUNNER_SHUTDOWN_RETRY_S="0", RUNPOD_REST_BASE=base)
+    full.update(RUNNER_SHUTDOWN_RETRY_S="0", RUNPOD_REST_BASE=base, RUNNER_SHUTDOWN_HOLD="0", RUNNER_RUNPODCTL="no-such-runpodctl")
     full.update({k: v for k, v in env.items() if v is not None})
     p = subprocess.run([sys.executable, SHUTDOWN], env=full, capture_output=True, text=True, timeout=60)
     return p.returncode, p.stdout + p.stderr
+
+
+def start_shutdown(base, **env):
+    """shutdown.py as it runs in the pod: holding on (RUNNER_SHUTDOWN_HOLD not set to 0). Returns the Popen."""
+    full = {k: v for k, v in os.environ.items() if not k.startswith(("RUNPOD_", "RUNNER_"))}
+    full.update(RUNNER_SHUTDOWN_RETRY_S="0", RUNNER_SHUTDOWN_HOLD_S="0.2", RUNPOD_REST_BASE=base,
+                RUNPOD_POD_ID=POD, RUNPOD_API_KEY=KEY, RUNNER_RUNPODCTL="no-such-runpodctl")
+    full.update({k: v for k, v in env.items() if v is not None})
+    return subprocess.Popen([sys.executable, SHUTDOWN], env=full, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+
+def finish(proc, secs=5):
+    """(still running?, output) after `secs`; the process is killed if it is still there."""
+    try:
+        out, _ = proc.communicate(timeout=secs)
+        return False, out
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out, _ = proc.communicate()
+        return True, out
+
+
+NL, Q = chr(10), chr(34)
+
+
+def fake_runpodctl(folder, exit_code):
+    """An executable that records its arguments in <folder>/ctl-args.txt and exits with exit_code."""
+    log = os.path.join(folder, "ctl-args.txt")
+    if os.name == "nt":
+        path = os.path.join(folder, "fakectl.cmd")
+        with open(path, "w") as f:
+            f.write("@echo off" + NL + "echo %* > " + Q + log + Q + NL + "exit /b " + str(exit_code) + NL)
+    else:
+        path = os.path.join(folder, "fakectl.sh")
+        with open(path, "w") as f:
+            f.write("#!/bin/sh" + NL + "echo " + Q + "$@" + Q + " > " + Q + log + Q + NL + "exit " + str(exit_code) + NL)
+        os.chmod(path, 0o755)
+    return path, log
 
 
 def run():
@@ -124,6 +164,48 @@ def run():
         check(code == 1 and len(FakeRunPod.seen) == 3 and KEY not in text and "response body" not in text,
               f"three tries on HTTP 500, then exit 1 ({len(FakeRunPod.seen)} requests)")
         FakeRunPod.status = 200
+        # ---- when the call fails: a second method, and never exit
+        FakeRunPod.status = 500
+        with tempfile.TemporaryDirectory() as tmp:
+            ctl, log = fake_runpodctl(tmp, 0)
+            FakeRunPod.seen.clear()
+            code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_RUNPODCTL=ctl, **env)
+            args = open(log).read().split() if os.path.exists(log) else []
+            check(code == 0 and args == ["remove", "pod", POD] and KEY not in text,
+                  f"second method: when the REST call fails, `runpodctl remove pod <id>` ends the machine, no key on its command line ({args})")
+            code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-stop", RUNNER_RUNPODCTL=ctl, **env)
+            args = open(log).read().split()
+            check(code == 0 and args == ["stop", "pod", POD], f"second method: stop mode uses `runpodctl stop pod <id>` ({args})")
+            ctl, log = fake_runpodctl(tmp, 1)
+            code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_RUNPODCTL=ctl, **env)
+            check(code == 1, f"second method: both failing with RUNNER_SHUTDOWN_HOLD=0 exits 1 ({code})")
+        FakeRunPod.seen.clear()
+        proc = start_shutdown(base, RUNNER_ON_EXIT="runpod-terminate")
+        time.sleep(3)
+        still = proc.poll() is None
+        n = len(FakeRunPod.seen)
+        FakeRunPod.status = 200                       # RunPod comes back: the next retry ends the machine
+        try:
+            code = proc.wait(8)
+        except subprocess.TimeoutExpired:
+            code = None
+        _, text = finish(proc, 1)
+        check(still and n > 3, f"hold: with both methods failing it does not exit and keeps retrying ({n} requests, still running: {still})")
+        check(code == 0, f"hold: ... and ends the machine when RunPod answers again (exit {code})")
+        FakeRunPod.status = 500
+        proc = start_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_SHUTDOWN_HOLD_FOR_S="1")
+        still, text = finish(proc, 5)
+        check(still and "hold try" in text and KEY not in text, "hold: after the retry window it sleeps instead of exiting (never exits)")
+        FakeRunPod.status = 200
+        for label, bad in (("a missing RUNPOD_API_KEY", {"RUNPOD_API_KEY": ""}), ("a bad pod id", {"RUNPOD_POD_ID": "../x"}),
+                           ("an unknown mode", {"RUNNER_ON_EXIT": "bogus"})):
+            proc = start_shutdown(base, **{"RUNNER_ON_EXIT": "runpod-terminate", **bad})
+            still, text = finish(proc, 3)
+            check(still and KEY not in text, f"hold: {label} does not exit either (an exited container is restarted)")
+        with open(os.path.join(ROOT, "trainer", "cloud", "entrypoint.sh"), encoding="utf-8") as f:
+            entry = f.read()
+        check("unset RUNNER_ALLOW_OPEN" in entry and "RUNNER_SHUTDOWN_TIMEOUT_S=5" in entry,
+              "entrypoint: unsets RUNNER_ALLOW_OPEN and shortens the shut-down tries after a stop signal")
     finally:
         srv.shutdown()
         srv.server_close()

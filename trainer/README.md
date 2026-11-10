@@ -48,7 +48,7 @@ with no token, no upload and no time limit unless you ask for them.
 
 | Variable | Default | |
 |---|---|---|
-| `RUNNER_TOKEN` | none | The bearer token, 32 or more characters (the app makes it with `secrets.token_urlsafe(32)`). Read once and removed from the environment, so the training process never sees it. A shorter one exits 2. |
+| `RUNNER_TOKEN` | none | The bearer token: 32 or more characters from `A-Z a-z 0-9 _ -` (what `secrets.token_urlsafe(32)` makes). Read once and removed from the runner's own environment and from the training process's environment, which stops accidental leaks only (see "What the token protects"). Anything else exits 2. |
 | `RUNNER_HOST` | `0.0.0.0` | Without a token, anything but `127.0.0.1`, `::1` or `localhost` is refused (exit 2) unless `RUNNER_ALLOW_OPEN=1`. The cloud image never sets that. |
 | `DATASETS_ROOT` | `/workspace/datasets` | Where uploaded datasets land. |
 | `RUNNER_UPLOAD_MAX_BYTES` | 268435456 (256 MiB) | Largest upload body. |
@@ -58,9 +58,11 @@ with no token, no upload and no time limit unless you ask for them.
 | `RUNNER_STATE_DIR` | `/workspace/runner-state` | `boot.json` keeps the first start, so a restarted container does not get a new clock. |
 | `RUNNER_ON_EXIT` | `none`; the image sets `runpod-terminate` | `none`, `runpod-terminate` or `runpod-stop`: what `shutdown.py` asks RunPod to do when the runner has exited. Needs `RUNPOD_POD_ID` and `RUNPOD_API_KEY`, which RunPod puts into every pod. |
 | `RUNNER_SHUTDOWN_RETRY_S` | 10 | Seconds between the 3 tries of that call. |
+| `RUNNER_BOOT_ID` | `RUNPOD_POD_ID` | Whose clock `boot.json` holds. A `boot.json` written by another pod (a network volume reused by a new machine) is ignored and a fresh clock starts; the same pod restarting keeps its first start. |
+| `RUNNER_SHUTDOWN_HOLD_S` / `RUNNER_SHUTDOWN_HOLD_FOR_S` | 60 / 3600 | When ending the machine fails, `shutdown.py` retries every 60 s for an hour and then sleeps for ever. It never exits (see below). `RUNNER_SHUTDOWN_HOLD=0` turns that off. |
 
 With a token the runner also drops `HF_WRITE_TOKEN` and `RUNPOD_API_KEY` from the training process's environment. `HF_TOKEN`
-stays, because gated base models need it.
+stays, because gated base models need it. `RUNNER_WATCH_EVERY_S` is capped at 60 and every number must be finite (`inf` and `nan` exit 2).
 
 ### Routes
 
@@ -72,7 +74,7 @@ missing and a wrong token. The token is never taken from a query string or a bod
 |---|---|
 | `PUT /datasets/<name>` | Body: a zip (`Content-Type: application/zip`) of flat image (png, jpg, jpeg, webp) and `.txt` caption files. Lands in `DATASETS_ROOT/<name>/`, replacing an earlier upload. Optional header `X-Content-SHA256`. Reply `201 {name, dataset_dir, images, captions, bytes, sha256}`. Refused with 411 (no `Content-Length`), 413 (too large), 409 (a run of that name is queued or running), 507 (disk) or 400 (the zip: the message names the entry). |
 | `GET /datasets/<name>` | `{name, images, captions, bytes}` or 404: check an upload without sending it again. |
-| `POST /jobs` `{name, config}` | Like `config_path`, but `config` is the YAML text (up to 256 KiB), written to `CONFIG_ROOT/<name>.yaml`. Every `training_folder` must be inside `OUTPUT_ROOT` and every `folder_path` inside `DATASETS_ROOT`, each on a line of its own. Give `config` or `config_path`, not both. |
+| `POST /jobs` `{name, config}` | Like `config_path`, but `config` is the ai-toolkit config as a **JSON object** (not YAML text; up to 256 KiB), written to `CONFIG_ROOT/<name>.json`. It is checked key by key against an allowlist (the keys `webapp/app/training.py` writes): `config.name` must equal the job name, every `datasets[].folder_path` must be inside `DATASETS_ROOT` (and name one dataset), `training_folder` inside `OUTPUT_ROOT`, `model.name_or_path` and `assistant_lora_path` only from a short list, and anything else is refused with a message naming the key: other path keys (`control_path`, `mask_path`, ...), `push_to_hub`, `hf_repo_id`, unknown keys, `NaN`. The file is written from the parsed object, so what was checked is what ai-toolkit reads. Give `config` or `config_path`, not both. |
 | `POST /deadline` `{seconds}` | A whole number from 60 to 86400. New deadline = now + seconds, but never past first start + `RUNNER_TIME_LIMIT_MAX_S`. It can shorten the deadline too. 409 when no limit is active. |
 | `GET /health` | With a valid token (or none configured) it also has `deadline_in_s` and `idle_in_s` (null when off). |
 
@@ -90,11 +92,23 @@ from the app. `entrypoint.sh` then runs `shutdown.py` whatever the exit code (a 
 ended too), and a coreutils `timeout` kills a runner that hangs. `shutdown.py` is standard library only and prints the mode
 and the HTTP status, never the key.
 
+If the watchdog thread itself fails for any reason, the runner prints that and exits 3 rather than going on with no limit.
+
+**When ending the machine fails** (wrong endpoint or key scope, RunPod down, no network), `shutdown.py` tries the REST call and then `runpodctl remove pod <id>` (`runpodctl stop pod <id>` in stop mode; it ships in RunPod pods and uses the pod's own key, nothing secret on its command line), 3 times. If both fail it does **not exit**: it keeps trying every 60 s for an hour and then sleeps for ever. An exited container is restarted by RunPod, and the restarted runner would find the deadline passed, exit 3, fail again, and loop (billing) for ever; a container that never exits cannot. A missing key, a bad pod id and an unknown mode hold the same way. Such a pod keeps billing until it is ended in the console or by the app, which must also end any pod of ours that is past its deadline (ss-m10t4).
+
+**A RunPod "Stop" in the console ends in deleting the pod.** RunPod sends `SIGTERM`, the runner exits 0, and the entrypoint then asks for `runpod-terminate` (or `runpod-stop`, which keeps the disk, if that is what is set). After a stop signal each call gets a 5 s timeout, because Docker allows only about 10 s.
+
 `RUNNER_ON_EXIT=runpod-terminate` leaves nothing billing but deletes the pod's disk: checkpoints that were not copied
 elsewhere are lost. `runpod-stop` keeps the disk, which stays billed until someone removes the pod.
 
 The two RunPod calls (`DELETE /pods/{id}`, `POST /pods/{id}/stop` on `https://rest.runpod.io/v1`) have not run against RunPod
 yet; they are checked against RunPod's documentation when the first real pod runs.
+
+### What the token protects
+
+The token is full control of the machine: with it a caller can start training runs, upload datasets, read any output file and move the deadline. The config check (above) keeps a run inside `DATASETS_ROOT` and `OUTPUT_ROOT` and off the internet except for the listed models; it does not make the token harmless.
+
+What the training process can see of the token: it cannot get it from its own environment (the runner removes `RUNNER_TOKEN`, `HF_WRITE_TOKEN` and `RUNPOD_API_KEY` there), but everything in the container runs as root, and Linux keeps the environment a process started with. `RUNNER_TOKEN` and `RUNPOD_API_KEY` are still in `/proc/1/environ` (the entrypoint, which RunPod started with them), in the `timeout` process, and in the runner's own start-up environment block. So code running in the training process, for instance code a model or config makes it run, could read them. The scrub covers accidental dumps (a printed environment, a crash report) only. Closing that gap needs the training child to run as a non-root user, which is not done here because the ostris image and its caches expect root. `HF_TOKEN` is passed to the training process on purpose.
 
 ### Build the image
 
@@ -113,8 +127,9 @@ and the limits come as environment variables when the pod is rented.
 | Threat | Answer |
 |---|---|
 | The port is public (RunPod's proxy URL) | Every route but a minimal `/health` needs a 32+ character token; with no token the runner refuses a non-local address. |
-| The token in a log | Removed from the environment at start, taken from the header only, never printed, dropped from the training process; the tests search the logs. The request log shows the request line without its query. |
+| The token in a log | Removed from the environment at start, taken from the header only, never printed, dropped from the training process's environment (not from `/proc`, see above); the tests search the logs. The request log shows the request line without its query. |
 | Path traversal | Flat zip names on an allowlist, links refused, extraction into a fresh folder then a rename; the `/files` checks stay. |
 | Zip bomb, full disk | Body cap, entry cap, per-file and total caps on bytes actually read, a free-space check. |
-| A forgotten machine keeps billing | A time limit from the first start that survives restarts, an idle limit, a coreutils backstop, the entrypoint ends the machine on any exit, a pod without a token ends itself. |
+| A forgotten machine keeps billing | A time limit from the first start that survives restarts (and is tied to the pod, so a reused volume cannot carry an old deadline), an idle limit, a watchdog that exits the runner if it fails, a coreutils backstop, the entrypoint ends the machine on any exit by two methods and never exits if both fail, a pod without a token ends itself. The app (ss-m10t4) is the third line: it ends any pod of ours past its deadline. |
+| A config that reads or writes elsewhere, or pushes to Hugging Face | `config` is a JSON object checked against a key allowlist with every path confined; nothing is scanned as text. |
 | A replayed upload | It needs the token over RunPod's HTTPS proxy; an upload is idempotent (the same bytes give the same dataset and sha256) and refused while that run trains. |
