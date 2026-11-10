@@ -59,7 +59,7 @@ with no token, no upload and no time limit unless you ask for them.
 | `RUNNER_ON_EXIT` | `none`; the image sets `runpod-terminate` | `none`, `runpod-terminate` or `runpod-stop`: what `shutdown.py` asks RunPod to do when the runner has exited. Needs `RUNPOD_POD_ID` and `RUNPOD_API_KEY`, which RunPod puts into every pod. |
 | `RUNNER_SHUTDOWN_RETRY_S` | 10 | Seconds between the 3 tries of that call. |
 | `RUNNER_BOOT_ID` | `RUNPOD_POD_ID` | Whose clock `boot.json` holds. A `boot.json` written by another pod (a network volume reused by a new machine) is ignored and a fresh clock starts; the same pod restarting keeps its first start. |
-| `RUNNER_SHUTDOWN_HOLD_S` / `RUNNER_SHUTDOWN_HOLD_MAX_S` | 60 / 300 | When ending the machine fails, `shutdown.py` retries for ever: first after 60 s, then the wait doubles up to 300 s. It never exits (see below). `RUNNER_SHUTDOWN_HOLD=0` turns that off. |
+| `RUNNER_SHUTDOWN_HOLD_S` / `RUNNER_SHUTDOWN_HOLD_MAX_S` | 60 / 300 | When ending the machine fails, `shutdown.py` retries for ever: first after 60 s, then the wait doubles up to 300 s. A `RUNNER_SHUTDOWN_HOLD_S` below 5 s (zero, text) falls back to 60, and an attempt that throws counts as failed, so the loop neither spins nor stops. It never exits (see below). `RUNNER_SHUTDOWN_HOLD=0` turns that off. |
 
 With a token the runner also drops `HF_WRITE_TOKEN` and `RUNPOD_API_KEY` from the training process's environment. `HF_TOKEN`
 stays, because gated base models need it. `RUNNER_WATCH_EVERY_S` is capped at 60 and every number must be finite (`inf` and `nan` exit 2).

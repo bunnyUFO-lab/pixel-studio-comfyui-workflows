@@ -12,7 +12,7 @@ Two ways to end the machine, tried one after the other: the REST call, then `run
 command line). `runpodctl` is tried in its current form (`runpodctl pod remove <id>`, `runpodctl pod stop <id>`) and, if
 that fails, in the legacy form (`runpodctl remove pod <id>`, `runpodctl stop pod <id>`). If both methods fail this script
 does NOT exit: it keeps trying for ever, first after RUNNER_SHUTDOWN_HOLD_S seconds (default 60), then with the wait
-doubling up to RUNNER_SHUTDOWN_HOLD_MAX_S (default 300). A container that exits is restarted by RunPod and would loop
+doubling up to RUNNER_SHUTDOWN_HOLD_MAX_S (default 300). RUNNER_SHUTDOWN_HOLD_S below 5 s (RUNNER_SHUTDOWN_HOLD_FLOOR_S; zero or non-numeric too) falls back to 60, so the loop cannot spin. An attempt that throws counts as failed. A container that exits is restarted by RunPod and would loop
 (and bill) for ever; one that never exits cannot, and retries cost nothing next to a GPU hour. The same holds for a missing key or pod id. The app is
 the third line of defence (it ends any pod of ours that is past its deadline). RUNNER_SHUTDOWN_HOLD=0 turns the holding
 off (the script then exits 1 as soon as the tries are used up; for tests and a local `docker run`).
@@ -79,12 +79,22 @@ def call_ctl(mode, pod):
 
 
 def try_both(mode, base, pod, key, label):
-    """One round: the REST call, then runpodctl. True when either one worked."""
-    status = call(mode, base, pod, key)
-    print(f"shutdown: mode {mode}, {label}, HTTP {status if status is not None else 'no answer'}", flush=True)
+    """One round: the REST call, then runpodctl. True when either one worked. Anything either one throws (an HTTP
+    protocol error, a bad URL, ...) is a failed attempt, logged by type only (never the message: it could hold the URL)."""
+    try:
+        status = call(mode, base, pod, key)
+    except Exception as e:
+        print(f"shutdown: mode {mode}, {label}, REST call failed ({type(e).__name__})", flush=True)
+        status = None
+    else:
+        print(f"shutdown: mode {mode}, {label}, HTTP {status if status is not None else 'no answer'}", flush=True)
     if status is not None and 200 <= status < 300:
         return True
-    code = call_ctl(mode, pod)
+    try:
+        code = call_ctl(mode, pod)
+    except Exception as e:
+        print(f"shutdown: mode {mode}, {label}, runpodctl failed ({type(e).__name__})", flush=True)
+        return False
     print(f"shutdown: mode {mode}, {label}, runpodctl {'not found' if code is None else 'exit ' + str(code)}", flush=True)
     return code == 0
 
@@ -131,12 +141,15 @@ def main():
         return 1
     # Both methods failed: keep trying for ever, with a capped back-off. Never exit.
     first, cap, n = number("RUNNER_SHUTDOWN_HOLD_S", 60), number("RUNNER_SHUTDOWN_HOLD_MAX_S", 300), 0
+    if first < number("RUNNER_SHUTDOWN_HOLD_FLOOR_S", 5):     # zero or tiny: fall back, so the loop can never spin
+        first = 60
     print("shutdown: the machine was not ended; trying again until it is (this script does not exit)", file=sys.stderr, flush=True)
     while True:
         n += 1
         time.sleep(backoff(n, first, cap))
         if try_both(mode, base, pod, key, f"hold try {n}"):
             return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

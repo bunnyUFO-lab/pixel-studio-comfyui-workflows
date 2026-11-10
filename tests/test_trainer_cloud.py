@@ -9,6 +9,7 @@ import importlib.util
 import io
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -66,7 +67,7 @@ def run_shutdown(base, **env):
 def start_shutdown(base, **env):
     """shutdown.py as it runs in the pod: holding on (RUNNER_SHUTDOWN_HOLD not set to 0). Returns the Popen."""
     full = {k: v for k, v in os.environ.items() if not k.startswith(("RUNPOD_", "RUNNER_"))}
-    full.update(RUNNER_SHUTDOWN_RETRY_S="0", RUNNER_SHUTDOWN_HOLD_S="0.2", RUNPOD_REST_BASE=base,
+    full.update(RUNNER_SHUTDOWN_RETRY_S="0", RUNNER_SHUTDOWN_HOLD_S="0.2", RUNNER_SHUTDOWN_HOLD_FLOOR_S="0", RUNPOD_REST_BASE=base,
                 RUNPOD_POD_ID=POD, RUNPOD_API_KEY=KEY, RUNNER_RUNPODCTL="no-such-runpodctl")
     full.update({k: v for k, v in env.items() if v is not None})
     return subprocess.Popen([sys.executable, SHUTDOWN], env=full, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -221,6 +222,36 @@ def run():
         waits = [sm.backoff(n, 60, 300) for n in range(1, 9)]
         check(waits == [60, 120, 240, 300, 300, 300, 300, 300] and sm.backoff(10 ** 6, 60, 300) == 300 and sm.backoff(1, 400, 300) == 400,
               f"hold: back-off doubles from 60 s and stays at the 300 s cap ({waits})")
+        # the floor: a hold wait of 0 (or 1 s, or text) falls back to 60 s, so it cannot spin; no retry happens in 3 s
+        for val in ("0", "1", "abc", "-5"):
+            proc = start_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNNER_SHUTDOWN_HOLD_S=val, RUNNER_SHUTDOWN_HOLD_FLOOR_S="5", RUNNER_SHUTDOWN_HOLD_MAX_S="300")
+            still, text = finish(proc, 3)
+            tries = len(re.findall(r"hold try \d+", text))
+            check(still and tries == 0, f"hold: RUNNER_SHUTDOWN_HOLD_S={val} falls back to the default wait, no spinning ({tries} hold tries in 3 s)")
+        # an attempt that throws (a reply that is not HTTP at all) is a failed attempt; the hold keeps retrying
+        garbage = socket.socket()
+        garbage.bind(("127.0.0.1", 0))
+        garbage.listen(20)
+        hits = []
+
+        def serve_garbage():
+            while True:
+                try:
+                    c, _ = garbage.accept()
+                except OSError:
+                    return
+                hits.append(1)
+                try:
+                    c.recv(4096)
+                    c.sendall(b"this is not http" + NL.encode() * 2)
+                finally:
+                    c.close()
+        threading.Thread(target=serve_garbage, daemon=True).start()
+        proc = start_shutdown("http://127.0.0.1:%d/v1" % garbage.getsockname()[1], RUNNER_ON_EXIT="runpod-terminate", RUNNER_SHUTDOWN_HOLD_S="0.1", RUNNER_SHUTDOWN_HOLD_MAX_S="0.3")
+        still, text = finish(proc, 4)
+        check(still and "Traceback" not in text and len(hits) >= 6 and KEY not in text,
+              f"hold: a reply that is not HTTP does not end the script, it counts as a failed try ({len(hits)} requests, still running: {still})")
+        garbage.close()
         FakeRunPod.status = 200
         for label, bad in (("a missing RUNPOD_API_KEY", {"RUNPOD_API_KEY": ""}), ("a bad pod id", {"RUNPOD_POD_ID": "../x"}),
                            ("an unknown mode", {"RUNNER_ON_EXIT": "bogus"})):
