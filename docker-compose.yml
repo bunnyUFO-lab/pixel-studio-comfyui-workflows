@@ -83,6 +83,7 @@ services:
       - "127.0.0.1:8675:8675"
     environment:
       RUNNER_PORT: "8675"
+      RUNNER_ALLOW_OPEN: "1"               # the port is published on 127.0.0.1 only
       CONFIG_ROOT: /workspace/configs
       OUTPUT_ROOT: /workspace/output
       HF_HOME: /root/.cache/huggingface

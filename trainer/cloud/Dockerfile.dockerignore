@@ -1,0 +1,4 @@
+*
+!trainer/runner.py
+!trainer/cloud/**
+**/__pycache__
