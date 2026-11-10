@@ -65,7 +65,7 @@ def real_fine(repo):
     """The shape the real whoami answered on 10 Nov 2026 for HF_TOKEN_LORAS: the model scope plus a second scope for the
     owner's user entity with an empty permission list (Hugging Face adds it to every fine-grained token)."""
     d = good_fine(repo)
-    d["scoped"].append({"entity": {"_id": "6700000000000001", "type": "user", "name": repo.split("/")[0]}, "permissions": []})
+    d["scoped"].append({"entity": {"_id": "6700000000000001", "type": "user", "name": "owner"}, "permissions": []})   # "owner" = the name FakeApi.whoami reports
     return d
 
 
@@ -1162,6 +1162,31 @@ def test_f1_token_check_fails_closed():
             lines, _ = upload_lines(api, files)
             check(lines[0]["state"] == "failed" and lines[0]["error"].startswith("refused: ") and not any(c[0] == "create_commit" for c in api.calls),
                   f"F3: next to the model scope, {label} is refused ({lines[0].get('error')})")
+        base_user = real_fine(REPO)["scoped"][1]
+        hidden = {
+            "the reviewer's probe: grants in another field of an empty user scope": dict(base_user, perms=["repo.write"]),
+            "permissions nested inside the entity of an empty user scope": dict(base_user, entity=dict(base_user["entity"], permissions=["repo.write"])),
+            "an unknown field on the empty user scope": dict(base_user, extra=1),
+            "an unknown field in the entity of the empty user scope": dict(base_user, entity=dict(base_user["entity"], scope="all")),
+            "an empty user scope of another user": dict(base_user, entity=dict(base_user["entity"], name="someone-else")),
+            "an empty user scope with no name": dict(base_user, entity={"type": "user", "_id": "1"}),
+            "an empty organization scope": dict(base_user, entity=dict(base_user["entity"], type="org", name="owner")),
+            "an empty scope of an unknown entity type": dict(base_user, entity=dict(base_user["entity"], type="space")),
+            "an empty scope with no entity type": dict(base_user, entity={"name": "owner"}),
+            "an empty scope with no entity": {"permissions": []},
+            "an empty scope whose entity is a string": dict(base_user, entity="owner"),
+        }
+        for label, extra in hidden.items():
+            fine = real_fine(REPO)
+            fine["scoped"][1] = extra
+            api = FakeApi(fine=fine)
+            lines, _ = upload_lines(api, files)
+            check(lines[0]["state"] == "failed" and lines[0]["error"].startswith("refused: ") and not any(c[0] == "create_commit" for c in api.calls),
+                  f"F3b: {label} is refused ({lines[0].get('error')})")
+        api = FakeApi(fine=real_fine(REPO))
+        api.whoami = lambda: {"auth": {"accessToken": {"role": "fineGrained", "fineGrained": real_fine(REPO)}}}
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["state"] == "failed", "F3b: a whoami answer with no name cannot vouch for the empty user scope")
         fine = real_fine(REPO)
         fine["scoped"] = [fine["scoped"][1]]
         lines, _ = upload_lines(FakeApi(fine=fine), files)

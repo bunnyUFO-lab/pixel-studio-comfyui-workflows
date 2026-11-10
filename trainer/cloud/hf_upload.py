@@ -104,8 +104,9 @@ def preflight(spec, api, sleep, out=None):
         if field(token, "role") != "fineGrained":
             return "refused: only a fine-grained token is accepted on a rented machine"
         fine = field(token, "fineGrained")
-        if not scoped_to_repo(fine, repo):
-            if scoped_to_other_case(fine, repo):
+        owner = field(who, "name")
+        if not scoped_to_repo(fine, repo, owner):
+            if scoped_to_other_case(fine, repo, owner):
                 return "refused: repository name differs in case from the one set (use the exact spelling)"
             return "refused: the token is not limited to this one repository"
         if out is not None:
@@ -121,11 +122,25 @@ def preflight(spec, api, sleep, out=None):
 TOKEN_PERMISSIONS = {"repo.access.read", "repo.content.read", "repo.write"}
 
 
-def granted_scopes(fine):
+EMPTY_SCOPE_KEYS = {"entity", "permissions"}
+EMPTY_SCOPE_ENTITY_KEYS = {"_id", "name", "type"}
+
+
+def own_empty_user_scope(sc, owner):
+    """The one empty scope the real answer has (10 Nov 2026): keys entity and permissions only, permissions an empty
+    list, the entity a user whose name is the token's own user (whoami name), entity keys _id, name, type."""
+    if not isinstance(sc, dict) or set(sc) != EMPTY_SCOPE_KEYS or sc["permissions"] != [] or not isinstance(sc["permissions"], list):
+        return False
+    ent = sc["entity"]
+    return (isinstance(ent, dict) and set(ent) <= EMPTY_SCOPE_ENTITY_KEYS and ent.get("type") == "user"
+            and isinstance(owner, str) and bool(owner) and ent.get("name") == owner)
+
+
+def granted_scopes(fine, owner=None):
     """The scopes that grant something, or None when the answer is not the expected shape. Hugging Face adds to every
-    fine-grained token a scope for the owner's user entity with an empty permission list (seen in the real answer on
-    10 Nov 2026): it grants nothing and is left out. A scope whose permission list is missing or not a list is not
-    understood, so the whole answer is not."""
+    fine-grained token a scope for the token's own user with an empty permission list (seen in the real answer on
+    10 Nov 2026): only exactly that scope is left out (own_empty_user_scope). Any other scope with an empty list, a scope
+    with an unknown field, or a permission list that is missing or not a list is not understood, so the answer is not."""
     glob, scoped = field(fine, "global"), field(fine, "scoped")
     if not isinstance(glob, list) or glob or not isinstance(scoped, list):
         return None
@@ -136,14 +151,16 @@ def granted_scopes(fine):
             return None
         if perms:
             granted.append(sc)
+        elif not own_empty_user_scope(sc, owner):
+            return None
     return granted
 
 
-def scoped_to_repo(fine, repo):
+def scoped_to_repo(fine, repo, owner=None):
     """True for exactly: `global` present and an empty list, one scope that grants anything, the model `repo` (spelled
     exactly), with repo.write and nothing beyond repo.access.read, repo.content.read and repo.write. Anything else,
     including a missing or oddly typed field, is not: it fails closed."""
-    granted = granted_scopes(fine)
+    granted = granted_scopes(fine, owner)
     if granted is None or len(granted) != 1:
         return False
     entity = field(granted[0], "entity")
@@ -153,10 +170,10 @@ def scoped_to_repo(fine, repo):
     return "repo.write" in perms and set(perms) <= TOKEN_PERMISSIONS
 
 
-def scoped_to_other_case(fine, repo):
+def scoped_to_other_case(fine, repo, owner=None):
     """True when the token is otherwise right but its repository is spelled in another case (Hugging Face reads names
     without case, we compare exactly: the configured name must be the one whoami shows)."""
-    granted = granted_scopes(fine)
+    granted = granted_scopes(fine, owner)
     if granted is None or len(granted) != 1:
         return False
     name = field(field(granted[0], "entity"), "name")
