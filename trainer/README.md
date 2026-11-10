@@ -101,8 +101,7 @@ If the watchdog thread itself fails for any reason, the runner prints that and e
 `RUNNER_ON_EXIT=runpod-terminate` leaves nothing billing but deletes the pod's disk: checkpoints that were not copied
 elsewhere are lost. `runpod-stop` keeps the disk, which stays billed until someone removes the pod.
 
-The two RunPod calls (`DELETE /pods/{id}`, `POST /pods/{id}/stop` on `https://rest.runpod.io/v1`) have not run against RunPod
-yet; they are checked against RunPod's documentation when the first real pod runs.
+The RunPod calls use REST v2 (`https://api.runpod.io/v2`): `DELETE /v2/pods/{id}` to delete the machine (204 when done) and `POST /v2/pods/{id}/action` with `{"action": "stop"}` for stop mode. RunPod's older REST v1 retires on 15 November 2026; no v1 call is left and `shutdown.py` refuses a v1 base. The key is the pod-scoped one RunPod puts in the machine's environment; it goes only into an `Authorization` header. A real rehearsal on 10 Nov 2026 proved that this key deletes its own pod through v2 on a CPU machine (v1 answered 403 to it). This trainer image itself has still not run on RunPod.
 
 ### What the token protects
 
@@ -112,9 +111,9 @@ What the training process can see of the token: it cannot get it from its own en
 
 ### Before the first rented machine
 
-Nothing has run on RunPod yet, and the app cannot yet end its own pods. Until it can, do this in order:
+This trainer image has not run on RunPod yet (a rehearsal on 10 Nov 2026 proved the v2 self-delete with a pod-scoped key on a CPU machine, using a different program), and the app cannot yet end its own pods. Until it can, do this in order:
 
-1. **Test on a cheap CPU machine first.** Rent the smallest CPU pod, run `shutdown.py` there once in each mode and see the pod disappear, both through the REST call and through `runpodctl` (ss-m10t10). Both calls are unverified.
+1. **Test on a cheap CPU machine first.** Rent the smallest CPU pod, run `shutdown.py` there once in each mode and see the pod disappear, both through the REST v2 call and through `runpodctl` (ss-m10t10). The v2 delete is proved by the rehearsal; `runpodctl` and stop mode are not.
 2. **Keep a small balance with auto top-up off.** The prepaid balance is the last limit on what a forgotten pod can cost.
 3. **Watch the first GPU run** and confirm the pod is gone after the limit (3 hours at most, 30 minutes idle).
 4. **The app-side cleanup (ss-m10t4) is the missing second line of defence.** It ends any pod of ours that is past its deadline. Until it exists, nothing automatic stands behind the runner's limits and the two shut-down calls, so do not leave a run unattended.

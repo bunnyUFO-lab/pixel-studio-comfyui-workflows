@@ -40,6 +40,7 @@ def main_capture(argv):
 
 class FakeRunPod(http.server.BaseHTTPRequestHandler):
     seen = []
+    bodies = []
     status = 200
 
     def log_message(self, *a):
@@ -47,6 +48,7 @@ class FakeRunPod(http.server.BaseHTTPRequestHandler):
 
     def handle_any(self):
         FakeRunPod.seen.append((self.command, self.path, self.headers.get("Authorization")))
+        FakeRunPod.bodies.append(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
         body = b'{"secret": "response body that must never be printed"}'
         self.send_response(FakeRunPod.status)
         self.send_header("Content-Length", str(len(body)))
@@ -146,16 +148,16 @@ def run():
     # ---- shutdown.py
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeRunPod)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = "http://127.0.0.1:%d/v1" % srv.server_address[1]
+    base = "http://127.0.0.1:%d/v2" % srv.server_address[1]
     try:
         env = {"RUNPOD_POD_ID": POD, "RUNPOD_API_KEY": KEY}
         FakeRunPod.seen.clear()
         code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", **env)
-        check(code == 0 and FakeRunPod.seen == [("DELETE", f"/v1/pods/{POD}", f"Bearer {KEY}")], f"terminate sends DELETE /pods/<id> with the Bearer header ({FakeRunPod.seen})")
+        check(code == 0 and FakeRunPod.seen == [("DELETE", f"/v2/pods/{POD}", f"Bearer {KEY}")], f"terminate sends DELETE /v2/pods/<id> with the Bearer header ({FakeRunPod.seen})")
         check(KEY not in text and "response body" not in text and "terminate" in text and "200" in text, f"terminate prints the mode and the status only ({text.strip()})")
         FakeRunPod.seen.clear()
         code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-stop", **env)
-        check(code == 0 and FakeRunPod.seen == [("POST", f"/v1/pods/{POD}/stop", f"Bearer {KEY}")], f"stop sends POST /pods/<id>/stop ({FakeRunPod.seen})")
+        check(code == 0 and FakeRunPod.seen == [("POST", f"/v2/pods/{POD}/action", f"Bearer {KEY}")], f"stop sends POST /v2/pods/<id>/action ({FakeRunPod.seen})")
         FakeRunPod.seen.clear()
         code, text = run_shutdown(base, **env)
         check(code == 0 and not FakeRunPod.seen, "mode none (the default) sends nothing")
@@ -167,7 +169,7 @@ def run():
         check(code == 1 and "RUNPOD_POD_ID" in text and KEY not in text and not FakeRunPod.seen, f"a missing RUNPOD_POD_ID exits 1 and names it ({text.strip()})")
         code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", RUNPOD_POD_ID="../x", RUNPOD_API_KEY=KEY)
         check(code == 1 and not FakeRunPod.seen, "a pod id with odd characters is refused before any request")
-        code, text = run_shutdown("http://example.com/v1", RUNNER_ON_EXIT="runpod-terminate", **env)
+        code, text = run_shutdown("http://example.com/v2", RUNNER_ON_EXIT="runpod-terminate", **env)
         check(code == 1 and "https://" in text and KEY not in text, "a plain http base that is not 127.0.0.1 is refused")
         code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-bogus", **env)
         check(code == 1 and not FakeRunPod.seen, "an unknown mode exits 1")
@@ -177,6 +179,63 @@ def run():
         check(code == 1 and len(FakeRunPod.seen) == 3 and KEY not in text and "response body" not in text,
               f"three tries on HTTP 500, then exit 1 ({len(FakeRunPod.seen)} requests)")
         FakeRunPod.status = 200
+        # ---- REST v2 only: 204 is done, 403 and 5xx are failed tries, key only in the header, no v1 host
+        FakeRunPod.seen.clear()
+        FakeRunPod.status = 204
+        code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", **env)
+        check(code == 0 and FakeRunPod.seen == [("DELETE", f"/v2/pods/{POD}", f"Bearer {KEY}")] and "204" in text,
+              f"v2 delete: 204 counts as done, one DELETE /v2/pods/<id> with the Bearer header ({FakeRunPod.seen})")
+        check(all(KEY not in path for _, path, _ in FakeRunPod.seen) and KEY not in text, "the key is in no URL and not in the output")
+        FakeRunPod.seen.clear()
+        FakeRunPod.status = 403
+        code, text = run_shutdown(base, RUNNER_ON_EXIT="runpod-terminate", **env)
+        check(code == 1 and len(FakeRunPod.seen) == 3 and "403" in text and KEY not in text, f"v2 delete: 403 is a failed try, 3 tries then exit 1 ({len(FakeRunPod.seen)})")
+        proc = start_shutdown(base, RUNNER_ON_EXIT="runpod-terminate")
+        time.sleep(2)
+        n403, still403 = len(FakeRunPod.seen), proc.poll() is None
+        FakeRunPod.status = 204
+        try:
+            code = proc.wait(8)
+        except subprocess.TimeoutExpired:
+            code = None
+        finish(proc, 1)
+        check(still403 and n403 > 3 and code == 0, f"v2 delete: with 403 the hold keeps retrying ({n403} requests) and ends the machine once 204 comes (exit {code})")
+        FakeRunPod.status = 503
+        proc = start_shutdown(base, RUNNER_ON_EXIT="runpod-terminate")
+        time.sleep(2)
+        check(proc.poll() is None and len(FakeRunPod.seen) > 3, "v2 delete: 5xx also keeps the hold retrying")
+        finish(proc, 1)
+        FakeRunPod.status = 200
+        FakeRunPod.seen.clear()
+        for v1 in ("https://rest.runpod.io/v1", "http://127.0.0.1:1/v1", "https://rest.runpod.io/v2"):
+            code, text = run_shutdown(v1, RUNNER_ON_EXIT="runpod-terminate", **env)
+            check(code == 1 and "v1" in text and "api.runpod.io/v2" in text and KEY not in text and not FakeRunPod.seen, f"a v1 base ({v1}) is refused before any request")
+        spec0 = importlib.util.spec_from_file_location("shutdown_mod0", SHUTDOWN)
+        sm0 = importlib.util.module_from_spec(spec0)
+        spec0.loader.exec_module(sm0)
+        check(sm0.DEFAULT_BASE == "https://api.runpod.io/v2", f"default base is REST v2 ({sm0.DEFAULT_BASE})")
+        FakeRunPod.status = 200
+        FakeRunPod.seen.clear()
+        FakeRunPod.bodies.clear()
+        run_shutdown(base, RUNNER_ON_EXIT="runpod-stop", **env)
+        check(FakeRunPod.bodies == [b'{"action": "stop"}'] and KEY.encode() not in FakeRunPod.bodies[0], "stop mode: the v2 action body is only the action, no key")
+        trainer_files = []
+        for top in ("trainer", os.path.join("cloud", "trainer"), os.path.join("psc", "cloud_trainer.py")):
+            full = os.path.join(ROOT, top)
+            if os.path.isfile(full):
+                trainer_files.append(full)
+            elif os.path.isdir(full):
+                for d, _, fs in os.walk(full):
+                    trainer_files += [os.path.join(d, f) for f in fs if f.endswith((".py", ".md", ".sh", ".txt", ".json")) or f == "Dockerfile"]
+        v1_left = []
+        for f in trainer_files:
+            try:
+                t = open(f, encoding="utf-8").read()
+            except (OSError, UnicodeDecodeError):
+                continue
+            if re.search(r"rest\.runpod\.io", t):
+                v1_left.append(os.path.relpath(f, ROOT))
+        check(not v1_left, f"no rest.runpod.io (REST v1) anywhere in the trainer, its image files, README or psc cloud trainer ({v1_left})")
         # ---- when the call fails: a second method, and never exit
         FakeRunPod.status = 500
         with tempfile.TemporaryDirectory() as tmp:
@@ -247,7 +306,7 @@ def run():
                 finally:
                     c.close()
         threading.Thread(target=serve_garbage, daemon=True).start()
-        proc = start_shutdown("http://127.0.0.1:%d/v1" % garbage.getsockname()[1], RUNNER_ON_EXIT="runpod-terminate", RUNNER_SHUTDOWN_HOLD_S="0.1", RUNNER_SHUTDOWN_HOLD_MAX_S="0.3")
+        proc = start_shutdown("http://127.0.0.1:%d/v2" % garbage.getsockname()[1], RUNNER_ON_EXIT="runpod-terminate", RUNNER_SHUTDOWN_HOLD_S="0.1", RUNNER_SHUTDOWN_HOLD_MAX_S="0.3")
         still, text = finish(proc, 4)
         check(still and "Traceback" not in text and len(hits) >= 6 and KEY not in text,
               f"hold: a reply that is not HTTP does not end the script, it counts as a failed try ({len(hits)} requests, still running: {still})")

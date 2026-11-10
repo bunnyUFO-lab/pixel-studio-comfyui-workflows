@@ -4,7 +4,8 @@
 RUNNER_ON_EXIT = none (default) | runpod-terminate | runpod-stop
 
 For RunPod it needs RUNPOD_POD_ID and RUNPOD_API_KEY (RunPod puts both into every pod; the key is limited to that
-pod). RUNPOD_REST_BASE defaults to https://rest.runpod.io/v1; only https:// or http://127.0.0.1: (tests) is accepted.
+pod). RUNPOD_REST_BASE defaults to https://api.runpod.io/v2 (RunPod REST v2; v1 retires on 15 November 2026 and is refused here); only
+https:// or http://127.0.0.1: (tests) is accepted. The key goes only into the Authorization header, never a URL, argument or log.
 Prints only the mode and the HTTP status, never the key or a response body.
 
 Two ways to end the machine, tried one after the other: the REST call, then `runpodctl` (RUNNER_RUNPODCTL, default
@@ -17,9 +18,8 @@ doubling up to RUNNER_SHUTDOWN_HOLD_MAX_S (default 300). RUNNER_SHUTDOWN_HOLD_S 
 the third line of defence (it ends any pod of ours that is past its deadline). RUNNER_SHUTDOWN_HOLD=0 turns the holding
 off (the script then exits 1 as soon as the tries are used up; for tests and a local `docker run`).
 
-UNVERIFIED: the RunPod calls below (DELETE /pods/{id} to terminate, POST /pods/{id}/stop to stop, and
-`runpodctl pod remove <id>` / `runpodctl pod stop <id>` and the legacy forms) were written from memory and have not run against RunPod.
-ss-m10t10 and ss-m10t4 check them against RunPod's docs once a key exists.
+The REST calls (v2): DELETE /v2/pods/{id} to terminate (204 when done; proved on a real CPU machine on 10 Nov 2026 with the pod-scoped key),
+POST /v2/pods/{id}/action {"action": "stop"} to stop (not run against RunPod). The `runpodctl` forms have not run against RunPod.
 """
 import os
 import re
@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 
 MODES = ("none", "runpod-terminate", "runpod-stop")
-DEFAULT_BASE = "https://rest.runpod.io/v1"
+DEFAULT_BASE = "https://api.runpod.io/v2"
 TRIES = 3
 
 
@@ -45,11 +45,14 @@ def number(name, default):
 
 def call(mode, base, pod, key):
     """One REST request. Returns the HTTP status, or None when the server could not be reached."""
+    headers, data = {"Authorization": f"Bearer {key}"}, None
     if mode == "runpod-terminate":
         method, url = "DELETE", f"{base}/pods/{pod}"
     else:
-        method, url = "POST", f"{base}/pods/{pod}/stop"
-    req = urllib.request.Request(url, method=method, headers={"Authorization": f"Bearer {key}"})
+        method, url = "POST", f"{base}/pods/{pod}/action"
+        headers["Content-Type"] = "application/json"
+        data = b'{"action": "stop"}'
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=number("RUNNER_SHUTDOWN_TIMEOUT_S", 30)) as r:
             return r.status
@@ -130,6 +133,8 @@ def main():
     base = (os.environ.get("RUNPOD_REST_BASE") or DEFAULT_BASE).rstrip("/")
     if not (base.startswith("https://") or base.startswith("http://127.0.0.1:")):
         return hold("shutdown: RUNPOD_REST_BASE must start with https:// (or http://127.0.0.1:)")
+    if "://rest." in base or base.endswith("/v1"):
+        return hold("shutdown: RUNPOD_REST_BASE names REST v1, which RunPod retires on 15 November 2026; use https://api.runpod.io/v2")
     wait = number("RUNNER_SHUTDOWN_RETRY_S", 10)
     for attempt in range(1, TRIES + 1):
         if try_both(mode, base, pod, key, f"try {attempt}"):
