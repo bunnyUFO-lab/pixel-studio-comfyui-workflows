@@ -84,7 +84,12 @@ UPLOAD_ALLOW_PUBLIC = os.environ.pop("RUNNER_UPLOAD_ALLOW_PUBLIC", "") == "1"   
 UPLOAD_ALLOW_CLASSIC = os.environ.pop("RUNNER_UPLOAD_ALLOW_CLASSIC", "") == "1"    # allow a classic (account-wide) token
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 CHILD_ENV_DROP = ("RUNNER_TOKEN", "HF_WRITE_TOKEN", "RUNPOD_API_KEY")
-UPLOAD_CHILD_ENV_DROP = ("HF_TOKEN", "HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE")  # the token goes only to huggingface.co   # HF_TOKEN stays: gated base models need it
+# The token goes only to huggingface.co: no other host, certificate store or proxy can come from the environment.
+# (The training child keeps HF_TOKEN: gated base models need it; only the upload child loses it.)
+UPLOAD_CHILD_ENV_DROP = ("HF_TOKEN", "HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR",
+                         "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy")
+TOKEN_CHECK_WAITS = (30.0, 90.0, 270.0)   # seconds before the 2nd, 3rd and 4th token check after a failed one
+TOKEN_CHECK_TRIES = 4                     # failed checks in a row, then the run is refused
 SOCKET_TIMEOUT = 120                  # seconds per socket read
 BODY_MAX = 2 << 20                    # JSON request bodies
 CONFIG_MAX = 262144                   # inline config, bytes
@@ -334,6 +339,10 @@ class Uploader:
         self.proc = None
         self.stopping = False                      # the limit is here: no new periodic pass
         self.timed_out = False                     # the grace ended while a pass was in flight
+        self.token_ok = False                      # the token kind was checked and accepted: kept for the whole run
+        self.check_fails = 0                       # failed token checks in a row (a failed whoami, not a refusal)
+        self.check_retry_at = 0.0                  # no new token check before this time, except in the final pass
+        self.check_error = "token check failed"
 
     # ---- helpers
     def redact(self, text):
@@ -599,7 +608,7 @@ class Uploader:
             try:
                 picked = self.hash_files(run, self.scan(run, final), final)
                 if picked:
-                    self.send(run, picked, deadline)
+                    self.send(run, picked, deadline, final)
             except Exception as e:                       # noqa: BLE001 - a pass must never break the runner
                 sys.stderr.write(f"runner: upload pass failed: {type(e).__name__}\n")
                 for rec in picked:
@@ -623,14 +632,21 @@ class Uploader:
                    PYTHONUNBUFFERED="1")
         return env
 
-    def send(self, run, recs, deadline):
-        """Hand the files to the child (the token goes on its stdin, once) and record each file's result line."""
-        spec = {"token": self.token, "repo": self.repo, "message": f"{run.job_name}: {len(recs)} files",
+    def send(self, run, recs, deadline, final=False):
+        """Hand the files to the child (the token goes on its stdin, once) and record each file's result line.
+        The child checks the token kind (whoami) only until one check was accepted; after a failed check the runner waits
+        out a back-off (the final pass excepted) and gives up after TOKEN_CHECK_TRIES, so whoami is not called every pass."""
+        check = not (self.token_ok or UPLOAD_ALLOW_CLASSIC)
+        if check and not final and time.time() < self.check_retry_at:
+            for rec in recs:                                     # closed meanwhile; picked again by the next pass
+                rec.state, rec.error = "failed", self.check_error
+            return
+        spec = {"check_token": check, "token": self.token, "repo": self.repo, "message": f"{run.job_name}: {len(recs)} files",
                 "allow_public": UPLOAD_ALLOW_PUBLIC, "allow_classic": UPLOAD_ALLOW_CLASSIC,
                 "files": [{"local": str(r.local), "path": r.path, "sha256": r.sha256, "size": r.size} for r in recs]}
         timeout = UPLOAD_PASS_TIMEOUT_S if deadline is None else max(1.0, min(UPLOAD_PASS_TIMEOUT_S, deadline - time.time()))
         kw = {"start_new_session": True} if os.name != "nt" else {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-        results, why, data = {}, None, b""
+        results, why, data, checked = {}, None, b"", False
         try:
             proc = subprocess.Popen(upload_command(), env=self.child_env(), stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=RUN_CWD, **kw)
@@ -661,6 +677,8 @@ class Uploader:
                     continue
                 if isinstance(obj, dict) and isinstance(obj.get("path"), str):
                     results[obj["path"]] = obj
+                elif isinstance(obj, dict) and obj.get("token_check") == "ok":
+                    checked = True
             if why is None and proc.returncode not in (0, None) and not results:
                 why = f"upload process exited with code {proc.returncode}"
         spec = None
@@ -683,6 +701,15 @@ class Uploader:
                 run.refused = rec.error
             elif m and run.refused is None:
                 run.refused = f"token or repo refused (HTTP {m.group(1)})"
+        if check and checked:
+            self.token_ok, self.check_fails = True, 0
+        elif check and not run.refused:                          # no answer about the token: closed, retried with back-off
+            self.check_fails += 1
+            self.check_error = next((r.error for r in recs if r.error and r.error.startswith("token check failed")), "token check failed")
+            if self.check_fails >= TOKEN_CHECK_TRIES:
+                run.refused = "refused: the token check failed"
+            else:
+                self.check_retry_at = time.time() + TOKEN_CHECK_WAITS[min(self.check_fails - 1, len(TOKEN_CHECK_WAITS) - 1)]
         if run.refused:
             with self.state_lock:
                 run.error = run.refused
@@ -1340,6 +1367,9 @@ def configure():
 def configure_upload():
     """Validate the Hugging Face upload settings (exit 2 on a bad one, naming the variable and never its value)."""
     global UPLOAD_EVERY_S, UPLOAD_SETTLE_S, UPLOAD_GRACE_S, UPLOADER
+    if UPLOAD_ALLOW_CLASSIC and os.environ.get("RUNPOD_POD_ID"):
+        sys.stderr.write("runner: RUNNER_UPLOAD_ALLOW_CLASSIC must not be set on a rented machine (RUNPOD_POD_ID is set)\n")
+        raise SystemExit(2)
     UPLOAD_EVERY_S = env_number("RUNNER_UPLOAD_EVERY_S", 60.0) or 60.0
     UPLOAD_SETTLE_S = env_number("RUNNER_UPLOAD_SETTLE_S", 30.0)
     UPLOAD_GRACE_S = env_number("RUNNER_UPLOAD_GRACE_S", 300.0)

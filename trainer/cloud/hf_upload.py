@@ -84,20 +84,32 @@ def retried(call, sleep):
             sleep(RETRY_WAITS[attempt])
 
 
-def preflight(spec, api, sleep):
-    """Before anything is sent: the token must be a fine-grained one and the repository private, unless the machine was
-    created with the explicit setting that allows it (spec allow_classic / allow_public, which the runner reads from
-    its environment at start). -> None when the target may receive files, else the error text for every file."""
+def preflight(spec, api, sleep, out=None):
+    """Before anything is sent: the token must be a fine-grained one limited to this repository, and the repository
+    private, unless the machine was created with the explicit setting that allows it (spec allow_classic /
+    allow_public, which the runner reads from its environment at start). -> None when the target may receive files,
+    else the error text for every file.
+
+    The token kind is asked about once per run (Hugging Face rate-limits whoami on purpose): the runner sends
+    check_token false after it has seen one `{"token_check": "ok"}` line. One try here; a failed or timed-out call
+    fails closed, and the runner retries it with back-off a few times. The privacy check runs on every pass."""
     repo = spec["repo"]
-    who, err = retried(api.whoami, sleep)
-    if err:
-        return err if status_of_text(err) else "token check failed: " + err
-    token = field(field(who, "auth"), "accessToken")
-    if not spec.get("allow_classic"):
+    if spec.get("check_token", True) and not spec.get("allow_classic"):
+        try:
+            who = api.whoami()
+        except Exception as e:                                          # noqa: BLE001
+            err = describe(e)
+            return err if status_of(e) in NO_RETRY_STATUS else "token check failed: " + err     # 401, 403, 404: a refusal
+        token = field(field(who, "auth"), "accessToken")
         if field(token, "role") != "fineGrained":
             return "refused: only a fine-grained token is accepted on a rented machine"
-        if not scoped_to_repo(field(token, "fineGrained"), repo):
+        fine = field(token, "fineGrained")
+        if not scoped_to_repo(fine, repo):
+            if scoped_to_other_case(fine, repo):
+                return "refused: repository name differs in case from the one set (use the exact spelling)"
             return "refused: the token is not limited to this one repository"
+        if out is not None:
+            out.line({"token_check": "ok"})
     info, err = retried(lambda: api.model_info(repo_id=repo), sleep)
     if err:
         return err if status_of_text(err) else "repository check failed: " + err
@@ -109,16 +121,46 @@ def preflight(spec, api, sleep):
 TOKEN_PERMISSIONS = {"repo.access.read", "repo.content.read", "repo.write"}
 
 
+def granted_scopes(fine):
+    """The scopes that grant something, or None when the answer is not the expected shape. Hugging Face adds to every
+    fine-grained token a scope for the owner's user entity with an empty permission list (seen in the real answer on
+    10 Nov 2026): it grants nothing and is left out. A scope whose permission list is missing or not a list is not
+    understood, so the whole answer is not."""
+    glob, scoped = field(fine, "global"), field(fine, "scoped")
+    if not isinstance(glob, list) or glob or not isinstance(scoped, list):
+        return None
+    granted = []
+    for sc in scoped:
+        perms = field(sc, "permissions")
+        if not isinstance(perms, list) or not all(isinstance(x, str) for x in perms):
+            return None
+        if perms:
+            granted.append(sc)
+    return granted
+
+
 def scoped_to_repo(fine, repo):
-    """True for exactly: no global permissions, one scope, the model `repo`, with repo.write and nothing beyond
-    repo.access.read, repo.content.read and repo.write. A broader token, or one for another repository, is not."""
-    scoped = field(fine, "scoped")
-    if field(fine, "global") or not isinstance(scoped, list) or len(scoped) != 1:
+    """True for exactly: `global` present and an empty list, one scope that grants anything, the model `repo` (spelled
+    exactly), with repo.write and nothing beyond repo.access.read, repo.content.read and repo.write. Anything else,
+    including a missing or oddly typed field, is not: it fails closed."""
+    granted = granted_scopes(fine)
+    if granted is None or len(granted) != 1:
         return False
-    entity, perms = field(scoped[0], "entity"), field(scoped[0], "permissions")
+    entity = field(granted[0], "entity")
+    perms = field(granted[0], "permissions")
     if field(entity, "type") != "model" or field(entity, "name") != repo:
         return False
-    return isinstance(perms, list) and "repo.write" in perms and set(perms) <= TOKEN_PERMISSIONS
+    return "repo.write" in perms and set(perms) <= TOKEN_PERMISSIONS
+
+
+def scoped_to_other_case(fine, repo):
+    """True when the token is otherwise right but its repository is spelled in another case (Hugging Face reads names
+    without case, we compare exactly: the configured name must be the one whoami shows)."""
+    granted = granted_scopes(fine)
+    if granted is None or len(granted) != 1:
+        return False
+    name = field(field(granted[0], "entity"), "name")
+    return isinstance(name, str) and name != repo and name.lower() == repo.lower()
 
 
 def status_of_text(text):
@@ -137,7 +179,7 @@ def run_upload(spec, api, out, sleep=time.sleep):
         for f in files:
             out.line({"path": f["path"], "state": "failed", "error": error})
 
-    refusal = preflight(spec, api, sleep)
+    refusal = preflight(spec, api, sleep, out)
     if refusal:
         fail_all(refusal)
         return
@@ -289,7 +331,8 @@ def harden_env():
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
     os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
-    for key in ("HF_TOKEN", "HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE"):
+    for key in ("HF_TOKEN", "HF_ENDPOINT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR",
+                "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"):
         os.environ.pop(key, None)
 
 

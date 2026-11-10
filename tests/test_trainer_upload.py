@@ -58,7 +58,15 @@ def alive(pid):
 def good_fine(repo, perms=("repo.access.read", "repo.content.read", "repo.write"), name=None):
     """whoami's fine-grained block for the owner's token: no global permissions, one scope, one model."""
     return {"canReadGatedRepos": False, "global": [],
-            "scoped": [{"entity": {"_id": "6700000000000000", "type": "model", "name": name or repo}, "permissions": list(perms)}]}
+            "scoped": [{"entity": {"_id": "6700000000000000", "authorId": "6700000000000001", "type": "model", "name": name or repo}, "permissions": list(perms)}]}
+
+
+def real_fine(repo):
+    """The shape the real whoami answered on 10 Nov 2026 for HF_TOKEN_LORAS: the model scope plus a second scope for the
+    owner's user entity with an empty permission list (Hugging Face adds it to every fine-grained token)."""
+    d = good_fine(repo)
+    d["scoped"].append({"entity": {"_id": "6700000000000001", "type": "user", "name": repo.split("/")[0]}, "permissions": []})
+    return d
 
 
 class HfHubHTTPError(Exception):
@@ -163,7 +171,7 @@ def upload_lines(api, files, token=HF_TOKEN, waits=None):
     out = H.Out(buf, [token])
     H.run_upload({"token": token, "repo": REPO, "files": files, "message": "job: %d files" % len(files)}, api, out,
                  sleep=(waits.append if waits is not None else (lambda s: None)))
-    return [json.loads(x) for x in buf.getvalue().splitlines()], buf.getvalue()
+    return [o for o in (json.loads(x) for x in buf.getvalue().splitlines()) if "path" in o], buf.getvalue()   # file lines; the token_check line is in the text
 
 
 # ================================================================== hf_upload in process
@@ -317,7 +325,7 @@ mode = os.environ.get("FAKE_UP_MODE", "ok")
 tok = spec["token"]
 rec = {"argv": sys.argv[1:], "env_keys": sorted(os.environ), "token_in_env_values": any(tok in v for v in os.environ.values()),
        "token_in_argv": any(tok in a for a in sys.argv), "token_on_stdin": bool(tok), "paths": [f["path"] for f in spec["files"]],
-       "repo": spec["repo"], "message": spec["message"], "allow_public": spec.get("allow_public"), "allow_classic": spec.get("allow_classic")}
+       "repo": spec["repo"], "message": spec["message"], "allow_public": spec.get("allow_public"), "allow_classic": spec.get("allow_classic"), "check_token": spec.get("check_token")}
 with open(os.environ["FAKE_UP_LOG"], "a") as f:
     f.write(json.dumps(rec) + "\n")
 if mode == "sleep":
@@ -327,9 +335,13 @@ if mode == "sleep":
 if mode == "slow":
     time.sleep(float(os.environ.get("FAKE_UP_SLOW_S", "5")))
 commit = hashlib.sha1(str(time.time_ns()).encode()).hexdigest()
+if spec.get("check_token") and mode != "check_fail":
+    print(json.dumps({"token_check": "ok"}), flush=True)
 for f in spec["files"]:
     p = f["path"]
-    if mode == "refuse":
+    if mode == "check_fail":
+        print(json.dumps({"path": p, "state": "failed", "error": "token check failed: HfHubHTTPError 500"}), flush=True)
+    elif mode == "refuse":
         print(json.dumps({"path": p, "state": "failed", "error": "HfHubHTTPError 401"}), flush=True)
     elif mode == "refuse_private":
         print(json.dumps({"path": p, "state": "failed", "error": "refused: the repository is not private"}), flush=True)
@@ -1099,6 +1111,216 @@ def test_files_and_readme():
     check(not re.search(r"^\s*(import|from)\s+(huggingface_hub|requests|yaml)", src, re.M), "runner.py stays standard library only")
 
 
+# ================================================================== follow-up to PR 25 (token check)
+def fine_without(*keys):
+    return {k: v for k, v in good_fine(REPO).items() if k not in keys}
+
+
+def test_f1_token_check_fails_closed():
+    with tempfile.TemporaryDirectory() as tmp:
+        files = make_files(tmp, 1)
+        odd = {
+            "no global key": fine_without("global"),
+            "global null": dict(good_fine(REPO), **{"global": None}),
+            "global a string": dict(good_fine(REPO), **{"global": "none"}),
+            "global a dict": dict(good_fine(REPO), **{"global": {}}),
+            "global a number": dict(good_fine(REPO), **{"global": 0}),
+            "global an empty tuple": dict(good_fine(REPO), **{"global": ()}),
+            "no scoped key": fine_without("scoped"),
+            "scoped null": dict(good_fine(REPO), scoped=None),
+            "scoped a dict": dict(good_fine(REPO), scoped=good_fine(REPO)["scoped"][0]),
+            "an empty block": {},
+            "a block of another type": "fine",
+            "a list as the block": [],
+        }
+        for label, fine in odd.items():
+            api = FakeApi(fine=fine)
+            lines, _ = upload_lines(api, files)
+            check(lines[0]["state"] == "failed" and lines[0]["error"].startswith("refused: ") and not any(c[0] == "create_commit" for c in api.calls),
+                  f"F1: a whoami answer with {label} is refused, not read as 'no global permissions' ({lines[0].get('error')})")
+        for label, who in (("no auth block", {"name": "o"}), ("auth null", {"auth": None}), ("accessToken a string", {"auth": {"accessToken": "x"}}),
+                           ("an empty answer", {}), ("a string answer", "ok"), ("None", None)):
+            api = FakeApi()
+            api.whoami = lambda who=who: who
+            lines, _ = upload_lines(api, files)
+            check(lines[0]["state"] == "failed" and lines[0]["error"].startswith("refused: ") and not any(c[0] == "create_commit" for c in api.calls),
+                  f"F1: a whoami answer that is {label} is refused ({lines[0].get('error')})")
+        api = FakeApi()
+        lines, text = upload_lines(api, files)
+        check('{"token_check": "ok"}' in text and lines[-1]["state"] == "done", "F1: the expected shape is still accepted")
+        api = FakeApi(fine=real_fine(REPO))
+        lines, text = upload_lines(api, files)
+        check('{"token_check": "ok"}' in text and lines[-1]["state"] == "done", "F3: the real answer (model scope plus an empty user scope) is accepted")
+        for label, extra in (("a user scope with a permission", {"entity": {"type": "user", "name": "test"}, "permissions": ["repo.write"]}),
+                             ("an organization scope with a permission", {"entity": {"type": "org", "name": "o"}, "permissions": ["repo.content.read"]}),
+                             ("an empty scope with no permission list", {"entity": {"type": "user", "name": "test"}}),
+                             ("an empty scope with permissions null", {"entity": {"type": "user", "name": "test"}, "permissions": None}),
+                             ("a scope that is not a mapping", "x")):
+            fine = real_fine(REPO)
+            fine["scoped"][1] = extra
+            api = FakeApi(fine=fine)
+            lines, _ = upload_lines(api, files)
+            check(lines[0]["state"] == "failed" and lines[0]["error"].startswith("refused: ") and not any(c[0] == "create_commit" for c in api.calls),
+                  f"F3: next to the model scope, {label} is refused ({lines[0].get('error')})")
+        fine = real_fine(REPO)
+        fine["scoped"] = [fine["scoped"][1]]
+        lines, _ = upload_lines(FakeApi(fine=fine), files)
+        check(lines[0]["state"] == "failed", "F3: only an empty scope (no model scope) is refused")
+
+
+def test_f1_repository_name_case():
+    with tempfile.TemporaryDirectory() as tmp:
+        files = make_files(tmp, 1)
+        api = FakeApi(fine=good_fine(REPO, name=REPO.upper()))
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["state"] == "failed" and lines[0]["error"].startswith("refused: ") and not any(c[0] == "create_commit" for c in api.calls),
+              f"case: a token scoped to the repository in another spelling is refused ({lines[0].get('error')})")
+        check("case" in lines[0]["error"] and re.fullmatch(r"[A-Za-z0-9_ .:()-]{1,120}", lines[0]["error"]),
+              "case: the reason says it is the spelling and survives the runner's error filter")
+        api = FakeApi(fine=good_fine(REPO, name="test/other-repo"))
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["error"] == "refused: the token is not limited to this one repository", "case: another repository keeps the old reason")
+        api = FakeApi()
+        lines, _ = upload_lines(api, files)
+        check(lines[-1]["state"] == "done", "case: the exact spelling is accepted")
+
+
+def test_f2_token_checked_once_per_run():
+    with tempfile.TemporaryDirectory() as tmp:
+        files = make_files(tmp, 1)
+        # child: no whoami when the runner says the token was already accepted; the ok line when it did check
+        api = FakeApi()
+        buf = io.StringIO()
+        H.run_upload({"token": HF_TOKEN, "repo": REPO, "files": files, "message": "m", "check_token": False}, api, H.Out(buf, [HF_TOKEN]), sleep=lambda s: None)
+        check(not any(c[0] == "whoami" for c in api.calls) and '"done"' in buf.getvalue() and "token_check" not in buf.getvalue(),
+              "F2: check_token false -> no whoami call, the files go")
+        api = FakeApi()
+        lines, text = upload_lines(api, files)
+        check(text.splitlines()[0] == '{"token_check": "ok"}' and sum(c[0] == "whoami" for c in api.calls) == 1, f"F2: a checked token is reported once ({text.splitlines()[0]})")
+        # a failed whoami: one try in the child (the runner does the back-off), failed closed, no ok line
+        for exc in (HfHubHTTPError(500), HfHubHTTPError(429), TimeoutError("t")):
+            api = FakeApi()
+
+            def boom(exc=exc, api=api):
+                api.calls.append(("whoami",))
+                raise exc
+            api.whoami = boom
+            waits = []
+            lines, text = upload_lines(api, files, waits=waits)
+            check("token_check" not in text and waits == [] and sum(c[0] == "whoami" for c in api.calls) == 1 and len(lines) == 1 and lines[0]["state"] == "failed"
+                  and lines[0]["error"].startswith("token check failed: ") and not any(c[0] == "create_commit" for c in api.calls),
+                  f"F2: whoami {type(exc).__name__} -> failed closed after one try, no ok line ({lines[0]})")
+        api = FakeApi()
+        api.whoami = lambda: (_ for _ in ()).throw(HfHubHTTPError(401))
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["error"] == "HfHubHTTPError 401", "F2: a 401 stays a refusal the runner stops on")
+        api = FakeApi(role="write")
+        lines, text = upload_lines(api, files)
+        check("token_check" not in text, "F2: a refused token is not reported ok")
+
+
+def test_f2_runner_keeps_the_verdict():
+    saved = {k: getattr(runner, k, None) for k in SAVED + ("TOKEN_CHECK_WAITS", "TOKEN_CHECK_TRIES")}
+    box = UBox()
+    try:
+        up, job, out = pass_box(box, "f2")
+        run = up.runs["f2"]
+        n = {"i": 0}
+
+        def add_and_pass():
+            n["i"] += 1
+            (out / f"f2_{n['i']:09d}.safetensors").write_bytes(sft(n["i"]))
+            up.run_pass(run, final=False)
+            up.run_pass(run, final=False)
+        add_and_pass()
+        add_and_pass()
+        add_and_pass()
+        c = box.calls()
+        check([x["check_token"] for x in c] == [True, False, False], f"F2: the runner asks the child to check the token once, then never again ({[x['check_token'] for x in c]})")
+        # failure: back-off, a fixed number of tries, then refused for the run
+        os.environ["FAKE_UP_MODE"] = "check_fail"
+        runner.TOKEN_CHECK_WAITS, runner.TOKEN_CHECK_TRIES = (3600, 3600), 3
+        up2, job2, out2 = pass_box(box, "f2b")
+        os.environ["FAKE_UP_MODE"] = "check_fail"
+        run2 = up2.runs["f2b"]
+        before = len(box.calls())
+        (out2 / "f2b_000000001.safetensors").write_bytes(sft("x"))
+        for _ in range(6):
+            up2.run_pass(run2, final=False)
+        made = len(box.calls()) - before
+        check(made == 1, f"F2: after a failed check the next passes do not call the child during the back-off ({made} child runs in 6 passes)")
+        st = up2.status("f2b")
+        check(st["state"] != "done" and all(f["state"] == "failed" for f in st["files"]), "F2: the files wait failed (closed) meanwhile")
+        for _ in range(2):
+            up2.check_retry_at = 0.0
+            up2.run_pass(run2, final=False)
+        made = len(box.calls()) - before
+        check(made == 3 and run2.refused and run2.refused.startswith("refused: "), f"F2: after {runner.TOKEN_CHECK_TRIES} failed checks the run is refused ({made} child runs, {run2.refused})")
+        up2.check_retry_at = 0.0
+        up2.tick()
+        check(len(box.calls()) - before == 3, "F2: a refused run makes no more passes")
+        # a final pass is one more try, whatever the back-off
+        runner.TOKEN_CHECK_WAITS, runner.TOKEN_CHECK_TRIES = (3600, 3600), 5
+        up3, job3, out3 = pass_box(box, "f2c")
+        os.environ["FAKE_UP_MODE"] = "check_fail"
+        run3 = up3.runs["f2c"]
+        (out3 / "f2c_000000001.safetensors").write_bytes(sft("y"))
+        b = len(box.calls())
+        up3.run_pass(run3, final=False)
+        up3.run_pass(run3, final=False)
+        os.environ["FAKE_UP_MODE"] = "ok"
+        up3.run_pass(run3, final=True)
+        check(len(box.calls()) - b == 2 and any(f["state"] == "done" for f in up3.status("f2c")["files"]), "F2: the final pass checks again even inside the back-off and succeeds")
+    finally:
+        restore({k: v for k, v in saved.items() if v is not None}, box)
+        for k in ("TOKEN_CHECK_WAITS", "TOKEN_CHECK_TRIES"):
+            if saved.get(k) is None and hasattr(runner, k):
+                delattr(runner, k)
+
+
+def test_f4_env_and_classic_on_a_pod():
+    names = ("SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy")
+    saved = {k: os.environ.get(k) for k in names}
+    try:
+        old = dict(os.environ)
+        for k in names:
+            os.environ[k] = "http://127.0.0.1:9"
+        H.harden_env()
+        check(not any(k in os.environ for k in names), "F4: the upload child drops SSL_CERT_DIR and the proxy variables itself")
+        os.environ.update(old)
+        for k in names:
+            os.environ[k] = "http://127.0.0.1:9"
+        env = runner.Uploader(HF_TOKEN, REPO).child_env()
+        check(not any(k in env for k in names), "F4: the runner gives the upload child none of SSL_CERT_DIR and the proxy variables")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    box = UBox()
+    try:
+        p = box.start(RUNNER_HOST="127.0.0.1", token=T.TOKEN, HF_WRITE_TOKEN=HF_TOKEN, HF_REPO=REPO, RUNNER_UPLOAD_ALLOW_CLASSIC="1", RUNPOD_POD_ID="abc123def456")
+        code = T.wait_exit(p, 15)
+        text = box.logs(p)
+        check(code == 2 and "RUNNER_UPLOAD_ALLOW_CLASSIC" in text and HF_TOKEN not in text,
+              f"F5: RUNNER_UPLOAD_ALLOW_CLASSIC on a rented machine (RUNPOD_POD_ID set) -> exit 2 naming the variable ({code})")
+    finally:
+        box.close()
+    box = UBox()
+    try:
+        p = box.start(RUNNER_HOST="127.0.0.1", token=T.TOKEN, HF_WRITE_TOKEN=HF_TOKEN, HF_REPO=REPO, RUNNER_UPLOAD_ALLOW_CLASSIC="1")
+        check(box.wait_up(p), "F5: on the owner's PC (no RUNPOD_POD_ID) the override still starts")
+    finally:
+        box.close()
+    box = UBox()
+    try:
+        p = box.start(RUNNER_HOST="127.0.0.1", token=T.TOKEN, HF_WRITE_TOKEN=HF_TOKEN, HF_REPO=REPO, RUNPOD_POD_ID="abc123def456")
+        check(box.wait_up(p), "F5: a rented machine without the override starts")
+    finally:
+        box.close()
+
+
 def run(only=None):
     del RESULTS[:]
     tests = [test_hf_upload_in_process, test_selftest_in_process, test_runner_end_to_end, test_runner_restart_keeps_status,
@@ -1106,7 +1328,9 @@ def run(only=None):
              test_idle_with_upload_in_flight, test_m1_final_pass_after_a_pass_in_flight, test_m2_done_needs_the_final_checkpoint,
              test_m3_incomplete_checkpoint, test_m4_trainer_that_cannot_start, test_m5_caps_on_every_pass, test_t2_private_repository,
              test_t2_runner_stops_on_a_refusal_and_passes_the_settings, test_t3_endpoint_is_fixed, test_t4_checksum_required,
-             test_t5_token_kind, test_token_scope, test_nice_to_have, test_files_and_readme]
+             test_t5_token_kind, test_token_scope, test_nice_to_have, test_files_and_readme,
+             test_f1_token_check_fails_closed, test_f1_repository_name_case, test_f2_token_checked_once_per_run,
+             test_f2_runner_keeps_the_verdict, test_f4_env_and_classic_on_a_pod]
     for fn in tests:
         if not only or any(o in fn.__name__ for o in only):
             fn()
