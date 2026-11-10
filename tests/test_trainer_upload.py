@@ -55,6 +55,12 @@ def alive(pid):
 
 
 # ================================================================== fakes
+def good_fine(repo, perms=("repo.access.read", "repo.content.read", "repo.write"), name=None):
+    """whoami's fine-grained block for the owner's token: no global permissions, one scope, one model."""
+    return {"canReadGatedRepos": False, "global": [],
+            "scoped": [{"entity": {"_id": "6700000000000000", "type": "model", "name": name or repo}, "permissions": list(perms)}]}
+
+
 class HfHubHTTPError(Exception):
     """Looks like the library's error: a class name, a message that holds the token, and response.status_code."""
 
@@ -66,15 +72,16 @@ class HfHubHTTPError(Exception):
 class FakeApi:
     """Records its calls; can fail create_commit with given statuses first; can answer another size or sha256."""
 
-    def __init__(self, fail=(), size_delta=0, lfs_sha=None, no_lfs=False, leak="", private=True, role="fineGrained"):
+    def __init__(self, fail=(), size_delta=0, lfs_sha=None, no_lfs=False, leak="", private=True, role="fineGrained", fine="default"):
         self.calls, self.fail, self.size_delta, self.lfs_sha, self.no_lfs, self.leak = [], list(fail), size_delta, lfs_sha, no_lfs, leak
         self.private, self.role = private, role
+        self.fine = good_fine(REPO) if fine == "default" else fine
         self.commits = []
         self.local = {}
 
     def whoami(self):
         self.calls.append(("whoami",))
-        return {"name": "owner", "auth": {"type": "access_token", "accessToken": {"role": self.role}}}
+        return {"name": "owner", "auth": {"type": "access_token", "accessToken": {"role": self.role, "fineGrained": self.fine}}}
 
     def model_info(self, repo_id):
         self.calls.append(("model_info", repo_id))
@@ -1022,6 +1029,39 @@ def test_t5_token_kind():
         check(lines[0]["error"].startswith("refused: only a fine-grained"), "T2d: the token kind is checked first")
 
 
+def test_token_scope():
+    with tempfile.TemporaryDirectory() as tmp:
+        files = make_files(tmp, 1)
+        bad = {
+            "another repository": good_fine(REPO, name="test/other-repo"),
+            "a global permission": dict(good_fine(REPO), **{"global": ["discussion.write"]}),
+            "two scopes": dict(good_fine(REPO), scoped=good_fine(REPO)["scoped"] + good_fine(REPO, name="test/other")["scoped"]),
+            "an organization scope": {"global": [], "scoped": [{"entity": {"type": "org", "name": "test"}, "permissions": ["repo.write"]}]},
+            "read only": good_fine(REPO, perms=("repo.access.read", "repo.content.read")),
+            "more than the three permissions": good_fine(REPO, perms=("repo.access.read", "repo.content.read", "repo.write", "repo.config")),
+            "no scope": {"global": [], "scoped": []},
+            "no fine-grained block": None,
+        }
+        for label, fine in bad.items():
+            api = FakeApi(fine=fine)
+            lines, _ = upload_lines(api, files)
+            check(lines[0]["state"] == "failed" and lines[0]["error"] == "refused: the token is not limited to this one repository" and not any(c[0] == "create_commit" for c in api.calls),
+                  f"token scope: a fine-grained token with {label} -> refused before anything is sent ({lines[0].get('error')})")
+        api = FakeApi()
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["state"] == "done", "token scope: fine-grained, no global permission, one scope = the configured model, with write -> accepted")
+        api = FakeApi(role="write", fine=None)
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["error"].startswith("refused: only a fine-grained"), "token scope: a classic token is still refused")
+        api = FakeApi(fine=good_fine(REPO, perms=("repo.write",)))
+        lines, _ = upload_lines(api, files)
+        check(lines[0]["state"] == "done", "token scope: write alone on the repository is enough")
+        api = FakeApi(role="write", fine=None)
+        buf = io.StringIO()
+        H.run_upload({"token": HF_TOKEN, "repo": REPO, "files": files, "message": "m", "allow_classic": True}, api, H.Out(buf, [HF_TOKEN]), sleep=lambda s: None)
+        check(buf.getvalue().count('"done"') == 1, "token scope: the explicit PC-only setting still lets a classic token through")
+
+
 def test_nice_to_have():
     saved = {k: getattr(runner, k) for k in SAVED}
     box = UBox()
@@ -1051,6 +1091,7 @@ def test_files_and_readme():
     check("Checkpoints to Hugging Face" in text and "huggingface_hub" in text and "fine-grained" in text.lower() and "classic" in text.lower(),
           "readme: the section 'Checkpoints to Hugging Face' names the library version, the classic token risk and the fine-grained advice")
     check("/proc/1/environ" in text and "RunPod keeps" in text, "readme: says the training child could read /proc/1/environ and that RunPod keeps the pod environment")
+    check("HF_TOKEN_LORAS" in text and "never goes on a rented machine" in text, "readme: names HF_TOKEN_LORAS as the PC variable for a rented machine, and that the classic HF_TOKEN never goes on one")
     check("RUNNER_UPLOAD_ALLOW_CLASSIC" in text and "RUNNER_UPLOAD_ALLOW_PUBLIC" in text and "must not" in text.lower() and "whoami" in text.lower(),
           "readme: says how to override the token-kind and the public-repository checks, and that a rented machine must not")
     src = (Path(ROOT) / "trainer" / "runner.py").read_text(encoding="utf-8")
@@ -1065,7 +1106,7 @@ def run(only=None):
              test_idle_with_upload_in_flight, test_m1_final_pass_after_a_pass_in_flight, test_m2_done_needs_the_final_checkpoint,
              test_m3_incomplete_checkpoint, test_m4_trainer_that_cannot_start, test_m5_caps_on_every_pass, test_t2_private_repository,
              test_t2_runner_stops_on_a_refusal_and_passes_the_settings, test_t3_endpoint_is_fixed, test_t4_checksum_required,
-             test_t5_token_kind, test_nice_to_have, test_files_and_readme]
+             test_t5_token_kind, test_token_scope, test_nice_to_have, test_files_and_readme]
     for fn in tests:
         if not only or any(o in fn.__name__ for o in only):
             fn()

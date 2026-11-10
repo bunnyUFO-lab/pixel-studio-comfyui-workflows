@@ -92,15 +92,33 @@ def preflight(spec, api, sleep):
     who, err = retried(api.whoami, sleep)
     if err:
         return err if status_of_text(err) else "token check failed: " + err
-    role = field(field(field(who, "auth"), "accessToken"), "role")
-    if role != "fineGrained" and not spec.get("allow_classic"):
-        return "refused: only a fine-grained token is accepted on a rented machine"
+    token = field(field(who, "auth"), "accessToken")
+    if not spec.get("allow_classic"):
+        if field(token, "role") != "fineGrained":
+            return "refused: only a fine-grained token is accepted on a rented machine"
+        if not scoped_to_repo(field(token, "fineGrained"), repo):
+            return "refused: the token is not limited to this one repository"
     info, err = retried(lambda: api.model_info(repo_id=repo), sleep)
     if err:
         return err if status_of_text(err) else "repository check failed: " + err
     if field(info, "private") is not True and not spec.get("allow_public"):
         return "refused: the repository is not private"
     return None
+
+
+TOKEN_PERMISSIONS = {"repo.access.read", "repo.content.read", "repo.write"}
+
+
+def scoped_to_repo(fine, repo):
+    """True for exactly: no global permissions, one scope, the model `repo`, with repo.write and nothing beyond
+    repo.access.read, repo.content.read and repo.write. A broader token, or one for another repository, is not."""
+    scoped = field(fine, "scoped")
+    if field(fine, "global") or not isinstance(scoped, list) or len(scoped) != 1:
+        return False
+    entity, perms = field(scoped[0], "entity"), field(scoped[0], "permissions")
+    if field(entity, "type") != "model" or field(entity, "name") != repo:
+        return False
+    return isinstance(perms, list) and "repo.write" in perms and set(perms) <= TOKEN_PERMISSIONS
 
 
 def status_of_text(text):
