@@ -1,0 +1,178 @@
+{
+ "blurred_sheet": {
+  "colour_flicker": 0.279,
+  "colour_flicker_pairs_used": 5,
+  "frame_size": [
+   192,
+   192
+  ],
+  "frames": 6,
+  "gates": {
+   "background_clean": 1.0,
+   "ground_shift": 0.0,
+   "loop_gap": 0.439,
+   "loop_mean_step": 0.3821,
+   "loop_ok": true,
+   "zoom_variation": 0.0
+  },
+  "grid_found": false,
+  "grid_offset": [
+   3,
+   3
+  ],
+  "grid_purity": 0.4449,
+  "grid_purity_per_frame": [
+   0.4349,
+   0.4608,
+   0.4416,
+   0.4608,
+   0.4349,
+   0.436
+  ],
+  "grid_scale": 8,
+  "grid_stability": 0.0,
+  "kind": "sheet",
+  "overall": 0.6414,
+  "palette_size": {
+   "max_frame": 34,
+   "per_frame": [
+    32,
+    34,
+    32,
+    34,
+    32,
+    32
+   ],
+   "sheet": 39
+  },
+  "quality": {
+   "background": 1.0,
+   "colour_flicker": 0.0,
+   "grid_purity": 0.0,
+   "grid_stability": 0.0,
+   "ground": 1.0,
+   "loop": 1.0,
+   "palette_size": 0.8205,
+   "same_character": 0.9524,
+   "zoom": 1.0
+  },
+  "same_character": {
+   "base": "frame 1",
+   "palette_overlap_mean": 0.9762,
+   "palette_overlap_min": 0.9667,
+   "size_change_max": 0.0,
+   "size_change_mean": 0.0
+  }
+ },
+ "good_sheet": {
+  "colour_flicker": 0.0,
+  "colour_flicker_pairs_used": 2,
+  "frame_size": [
+   192,
+   192
+  ],
+  "frames": 6,
+  "gates": {
+   "background_clean": 1.0,
+   "ground_shift": 0.0,
+   "loop_gap": 0.2154,
+   "loop_mean_step": 0.1892,
+   "loop_ok": true,
+   "zoom_variation": 0.0
+  },
+  "grid_found": true,
+  "grid_offset": [
+   0,
+   0
+  ],
+  "grid_purity": 1.0,
+  "grid_purity_per_frame": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "grid_scale": 8,
+  "grid_stability": 1.0,
+  "kind": "sheet",
+  "overall": 1.0,
+  "palette_size": {
+   "max_frame": 4,
+   "per_frame": [
+    4,
+    4,
+    4,
+    4,
+    4,
+    4
+   ],
+   "sheet": 4
+  },
+  "quality": {
+   "background": 1.0,
+   "colour_flicker": 1.0,
+   "grid_purity": 1.0,
+   "grid_stability": 1.0,
+   "ground": 1.0,
+   "loop": 1.0,
+   "palette_size": 1.0,
+   "same_character": 1.0,
+   "zoom": 1.0
+  },
+  "same_character": {
+   "base": "frame 1",
+   "palette_overlap_mean": 1.0,
+   "palette_overlap_min": 1.0,
+   "size_change_max": 0.0,
+   "size_change_mean": 0.0
+  }
+ },
+ "shifted_single": {
+  "colour_flicker": null,
+  "colour_flicker_pairs_used": 0,
+  "frame_size": [
+   192,
+   192
+  ],
+  "frames": 1,
+  "gates": {
+   "background_clean": 1.0,
+   "ground_shift": 0.0,
+   "loop_gap": null,
+   "loop_mean_step": null,
+   "loop_ok": null,
+   "zoom_variation": 0.0
+  },
+  "grid_found": true,
+  "grid_offset": [
+   7,
+   1
+  ],
+  "grid_purity": 1.0,
+  "grid_purity_per_frame": [
+   1.0
+  ],
+  "grid_scale": 8,
+  "grid_stability": 1.0,
+  "kind": "image",
+  "overall": 1.0,
+  "palette_size": {
+   "max_frame": 4,
+   "per_frame": [
+    4
+   ],
+   "sheet": 4
+  },
+  "quality": {
+   "background": 1.0,
+   "grid_purity": 1.0,
+   "grid_stability": 1.0,
+   "ground": 1.0,
+   "palette_size": 1.0,
+   "zoom": 1.0
+  },
+  "same_character": null
+ }
+}
