@@ -291,5 +291,113 @@ h1, h0 = pixel.grid_cutout(halo, wide, padding=0), pixel.grid_cutout(halo, wide,
 check(h1.shape[0] == 8 and h0.shape[0] == 9 and (h0[0, :, :3] == gpal[0]).all(),
       "grid_cutout: background-coloured edge cells are keyed out (without it they stay as a white halo row)")
 
+# ----------------------------------------------------------------- the two styles: smooth and outlined
+def rule_by_hand(block, method):
+    """The rated rule, one block at a time (the loop the vectorised pick_blocks replaces)."""
+    op = block[:, 3] >= 128
+    if op.mean() < 0.5:
+        return None
+    col = block[op][:, :3].astype(np.float32)
+    if method == "smooth":
+        return np.clip(col.mean(0), 0, 255).astype(np.uint8)
+    lum = col @ np.array([0.299, 0.587, 0.114], np.float32)
+    lo, hi = lum.min(), lum.max()
+    if hi - lo < 40:
+        v = np.median(col, axis=0)
+    else:
+        dark = lum < (lo + hi) / 2
+        v = col[dark].mean(0) if dark.mean() >= 0.25 else col[~dark].mean(0)
+    return np.clip(v, 0, 255).astype(np.uint8)
+
+
+def block_of(*parts):
+    """A 64-pixel block from (count, colour) parts; a colour of None is transparent."""
+    rows = [np.tile(np.array([*(c or (0, 0, 0)), 255 if c else 0], np.uint8), (k, 1)) for k, c in parts]
+    return np.concatenate(rows)[None, None]
+
+
+DARK, LIGHT = (20, 16, 28), (200, 180, 140)
+half = block_of((32, DARK), (32, LIGHT))
+check(tuple(pixel.pick_blocks(half, "smooth")[0][0, 0]) == (110, 98, 84), "smooth: a block is the average of its pixels")
+check(tuple(pixel.pick_blocks(block_of((16, DARK), (48, LIGHT)), "outlined")[0][0, 0]) == DARK
+      and tuple(pixel.pick_blocks(block_of((15, DARK), (49, LIGHT)), "outlined")[0][0, 0]) == LIGHT,
+      "outlined: a dark group of a quarter of the block wins (16 of 64), one pixel fewer and the light group does")
+soft = block_of((40, (100, 100, 100)), (20, (110, 110, 110)), (4, (130, 130, 130)))
+check(tuple(pixel.pick_blocks(soft, "outlined")[0][0, 0]) == (100, 100, 100)
+      and tuple(pixel.pick_blocks(soft, "smooth")[0][0, 0]) != (100, 100, 100),
+      "outlined: a spread under 40 levels is one colour, the median (smooth still averages it)")
+part = block_of((24, DARK), (8, LIGHT), (32, None))
+rgb_p, a_p = pixel.pick_blocks(part, "smooth")
+check(a_p[0, 0] and tuple(rgb_p[0, 0]) == (65, 57, 56) and not pixel.pick_blocks(block_of((31, DARK), (33, None)), "smooth")[1][0, 0],
+      "both: only opaque pixels count, and a block under half opaque is transparent")
+rng = np.random.default_rng(7)
+rand = rng.integers(0, 256, (12, 9, 64, 4), dtype=np.uint8)
+rand[:6, :, :, :3] = rand[:6, :, :1, :3] // 2 + rand[:6, :, :, :3] // 8                # some low-spread blocks too
+rand[..., 3] = np.where(rng.random((12, 9, 64)) < rng.random((12, 9, 1)), 255, 0)      # every opaque share
+for m in ("smooth", "outlined"):
+    got, got_a = pixel.pick_blocks(rand, m)
+    want = [[rule_by_hand(rand[y, x], m) for x in range(9)] for y in range(12)]
+    same = all((want[y][x] is None and not got_a[y, x]) or (want[y][x] is not None and got_a[y, x] and (got[y, x] == want[y][x]).all())
+               for y in range(12) for x in range(9))
+    check(same and 20 < got_a.sum() < 100, f"{m}: 108 random blocks match the rule applied one block at a time")
+
+
+def drawing(cell, off=(0, 0), blur=0.0, noise=0, n=(40, 36)):
+    """A model's "pixel art": a figure of `cell` px blocks on a white background, optionally soft (blurred, noisy)."""
+    art = np.full((n[1], n[0], 3), 255, np.uint8)
+    spr = make_sprite(24, 32)
+    art[2:34, 8:32][spr[..., 3] > 0] = spr[..., :3][spr[..., 3] > 0]
+    big = np.full((n[1] * cell + 16, n[0] * cell + 16, 3), 255, np.uint8)
+    big[off[1]:off[1] + n[1] * cell, off[0]:off[0] + n[0] * cell] = np.kron(art, np.ones((cell, cell, 1), np.uint8))
+    if blur:
+        big = np.asarray(Image.fromarray(big).filter(ImageFilter.GaussianBlur(blur)))
+    if noise:
+        big = np.clip(big.astype(int) + np.random.default_rng(3).integers(-noise, noise + 1, big.shape), 0, 255).astype(np.uint8)
+    return np.dstack([big, np.full(big.shape[:2], 255, np.uint8)])
+
+
+hard8, soft8, hard16 = drawing(8, (3, 5)), drawing(8, (3, 5), blur=1.2, noise=6), drawing(16, (6, 2))
+painting = np.asarray(Image.fromarray(drawing(8)[..., :3]).filter(ImageFilter.GaussianBlur(9)))
+check(pixel.find_grid(hard8)[:3] == (8, 3, 5) and pixel.find_grid(hard16)[:3] == (16, 6, 2),
+      "find_grid: block size and where the blocks start, for 8 px and 16 px drawings")
+check(pixel.find_grid(soft8)[:3] == (8, 3, 5) and pixel.detect_scale(soft8)[0] == 1,
+      "find_grid: a soft grid (blurred, noisy blocks) is still found, where detect_scale's exact test sees none")
+check(pixel.find_grid(painting) is None and pixel.find_grid(drawing(4)) is None,
+      "find_grid: a smooth picture has no grid, and a best fit under 6 px counts as none")
+check(pixel.auto_style((8, 0, 0, 0.9)) == "smooth" and pixel.auto_style((16, 0, 0, 0.9)) == "outlined" and pixel.auto_style(None) == "outlined",
+      "auto: smooth on an 8 px grid, outlined on a 16 px grid and with no grid")
+
+
+def style_run(img, method, pixels=40, colors=0, **kw):
+    f, p, i = pixel.pixelize_frames([img], pixels, "subject height", method, colors, "auto", False, "auto remove", 12.0, False, "none", 1,
+                                    smooth=0.0, edge_cleanup=False, **kw)
+    return f[0], p[0], i[0]
+
+
+sx0, sy0, sx1, sy1 = pixel.subject_bbox(make_sprite(24, 32)[..., 3] > 0)
+spr = np.pad(make_sprite(24, 32)[sy0:sy1, sx0:sx1], ((1, 1), (1, 1), (0, 0)))          # the figure, with the 1 px padding
+for name, img in (("8 px", hard8), ("16 px", hard16)):
+    for m in ("outlined", "smooth"):
+        out, _, info = style_run(img, m)
+        check(out.shape == spr.shape and (out == spr).all(),
+              f"{m}: a {name} drawing is read on its own grid, every art pixel back exactly, whatever 'pixels' asks ({info})")
+out_s, _, info_s = style_run(soft8, "smooth")
+check(out_s.shape == spr.shape and "own 8 px grid" in info_s and (out_s[..., 3] == spr[..., 3]).all(),
+      f"a soft 8 px drawing comes out at its own size too ({spr.shape[0] - 2} px tall), not resampled to the 40 px asked for")
+out_p, _, info_p = style_run(np.dstack([painting, np.full(painting.shape[:2], 255, np.uint8)]), "outlined")
+check(out_p.shape[0] == 42 and "no grid" in info_p and set(out_p[..., 3].ravel()) <= {0, 255},
+      f"a drawing with no grid is sized by 'pixels' as before ({info_p})")
+infos = [style_run(img, "auto")[2] for img in (hard8, soft8, hard16, np.dstack([painting, np.full(painting.shape[:2], 255, np.uint8)]))]
+check("smooth (auto)" in infos[0] and "smooth (auto)" in infos[1] and "outlined (auto)" in infos[2] and "outlined (auto)" in infos[3],
+      "method auto: smooth for the 8 px drawings (hard and soft), outlined for 16 px and for no grid; the info line says which")
+many = hard8.copy()
+many[..., :3] = np.clip(many[..., :3].astype(int) + (np.indices(many.shape[:2]).sum(0)[..., None] // 8 % 64), 0, 255)
+n16, n6 = (len(np.unique(style_run(many, "smooth", colors=c)[0].reshape(-1, 4), axis=0)) - 1 for c in (0, 6))
+check(n16 == 16 and n6 <= 6, f"the styles end at 16 colours when colors is 0, and at 'colors' when it is set ({n16}, {n6})")
+whole, _, info_w = pixel.pixelize_frames([hard8], 38, "whole frame", "smooth", 0, "auto", False, "keep", 12.0, False, "none", 0, smooth=0.0, edge_cleanup=False)
+check(whole[0].shape[:2] == (38, 42) and "has a 8 px grid" in info_w[0], "measure 'whole frame' keeps its exact size: the grid is only reported")
+methods = pixel.Pixelize.INPUT_TYPES()["required"]["method"][0]
+check(methods[0] == "pixeloe" and {"auto", "smooth", "outlined"} <= set(methods), "Pixelize offers auto, smooth and outlined; pixeloe stays the default")
+
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
 sys.exit(0 if all(RESULTS) else 1)
