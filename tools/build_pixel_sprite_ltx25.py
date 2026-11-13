@@ -184,7 +184,7 @@ def build():
     link(75, 0, 76, 2)
     link(76, 2, 77, 0)
     link(5, 0, 77, 1)
-    pixel_tail(g, 2000, (77, 0), "pixel/sprite_from_prompt_ltx25", FPS, True, "idle")
+    pixel_tail(g, 2000, (77, 0), "pixel/sprite_from_prompt_ltx25", FPS, True, "idle", hold_colors=True)
     g.save(WORKFLOWS / "pixel-art" / "sprite-from-prompt-ltx25.json", "pixel-art-sprite-from-prompt-ltx25", groups=[
         ("Models", [-20, -60, 460, 1140], "#3f789e"),
         ("Sprite + prompt", [440, -60, 840, 1240], "#a1309b"),

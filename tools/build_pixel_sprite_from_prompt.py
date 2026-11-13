@@ -25,7 +25,7 @@ SEED = 7
 SHEET = ["pixel/sprite_from_prompt", 2, 0, True, 0, 0, True, 8, "idle", 4]
 
 # height_match, bg_tolerance, method, colors (0 = sprite palette), palette, stability, deflicker, cleanup, outline
-REPIX = [False, 18.0, "dominant", 0, "sprite", 0.7, True, True, "none"]
+REPIX = [False, 18.0, "dominant", 0, "sprite", 0.7, True, True, "none", True]   # last: hold the first frame's colours
 
 NOTE = f"""Pixel sprite + prompt -> animated sprite sheet
 

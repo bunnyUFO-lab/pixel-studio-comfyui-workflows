@@ -991,8 +991,48 @@ def _palette_with_new_colours(frames_rgb, palette, bg, max_new):
     return np.concatenate([palette, np.array(keep, np.uint8)], 0) if keep else palette
 
 
+def hold_first_colours(frames, bg, tolerance=30.0, min_share=0.01):
+    """Give every frame's figure the colour distribution of the first frame's figure (per channel).
+    Video models change the figure's tones over a clip: Wan lifts the dark colours and lowers the contrast in its last
+    few frames, so the snapped sprite gets paler and a loop flashes when it jumps back to the first frame. Each frame's
+    figure (the pixels away from the flat background) is mapped through a 256-entry table per channel that lines its
+    brightness order up with the first frame's, so a tone keeps its rank and gets the first frame's value for that
+    rank. The table depends on the pixel's value only, never on where it is, so flat areas stay flat.
+    A frame with next to no figure in it is left as it is; so is a clip whose first frame has none."""
+    if len(frames) < 2:
+        return frames
+    lab_bg = rgb_to_lab(np.asarray(bg, np.uint8)[None, None])[0, 0]
+
+    def figure(fr):
+        return np.sqrt(((rgb_to_lab(fr[..., :3]) - lab_bg) ** 2).sum(-1)) > tolerance
+
+    m0 = figure(frames[0])
+    n0 = int(m0.sum())
+    if n0 < min_share * m0.size:
+        return frames
+    ref = np.sort(frames[0][m0][:, :3], axis=0)
+    out = [frames[0]]
+    for fr in frames[1:]:
+        m = figure(fr)
+        n = int(m.sum())
+        if n < min_share * m.size:
+            out.append(fr)
+            continue
+        p = fr[m][:, :3]
+        q = np.empty_like(p)
+        for c in range(3):
+            hist = np.bincount(p[:, c], minlength=256)
+            mid = (np.cumsum(hist) - hist / 2.0) / n                # where each value sits in this frame, 0..1
+            lut = ref[np.clip(np.round(mid * (n0 - 1)).astype(np.int64), 0, n0 - 1), c]
+            q[:, c] = lut[p[:, c]]
+        o = fr.copy()
+        o[m, :3] = q
+        out.append(o)
+    return out
+
+
 def repixelate(frames_rgb, spec, height_match=False, bg_tolerance=18.0, method="dominant", colors=0,
-               palette_text="sprite", stability=0.7, deflicker=True, cleanup=True, outline="none"):
+               palette_text="sprite", stability=0.7, deflicker=True, cleanup=True, outline="none", hold_colors=False):
     f = spec["factor"]
     cw, ch = spec["canvas"]
     add_new = palette_text.strip().lower().replace(" ", "") in ("sprite+new", "sprite+newcolours", "sprite+newcolors")
@@ -1007,6 +1047,8 @@ def repixelate(frames_rgb, spec, height_match=False, bg_tolerance=18.0, method="
         if fr.shape[:2] != (ch * f, cw * f):
             fr = np.asarray(Image.fromarray(fr[..., :3]).resize((cw * f, ch * f), Image.BILINEAR))
         frames.append(np.concatenate([_rekey_background(fr[..., :3], bg, bg_tolerance, palette), np.full(fr.shape[:2] + (1,), 255, np.uint8)], -1))
+    if hold_colors:
+        frames = hold_first_colours(frames, bg, max(30.0, bg_tolerance))
     if height_match and frames:
         # one scale for the whole clip, from the first frame (the driving video's start pose), about one fixed
         # anchor: the character gets the sprite's height and motion (steps, crouches, jumps) is kept as is
@@ -1119,6 +1161,8 @@ class RepixelateFrames:
             "deflicker": ("BOOLEAN", {"default": True, "tooltip": "Remove one-frame colour blinks (a pixel that switches to a similar colour for a single frame)."}),
             "cleanup": ("BOOLEAN", {"default": True, "tooltip": "Remove isolated stray pixels and 1-pixel spurs/notches on the silhouette in each frame (distinct ones like eyes are kept)."}),
             "outline": (["none", "auto", "darker shade", "darkest"], {"tooltip": "Re-draw the silhouette outline in every frame (keeps it unbroken while moving). none = keep what the sprite/frames have."}),
+        }, "optional": {
+            "hold_colors": ("BOOLEAN", {"default": False, "tooltip": "Keep the first frame's colours through the clip: every frame's figure gets the first frame's spread of colours before it is snapped to the palette. Stops the pale last frames (a white flash when the loop restarts) that video models add. Leave off when the clip is meant to change colour."}),
         }}
 
     RETURN_TYPES = ("IMAGE", "STRING", "STRING")
@@ -1128,14 +1172,15 @@ class RepixelateFrames:
     DESCRIPTION = "Bring video-model frames back to the sprite's exact pixel grid and palette (same pixel size), background keyed out."
 
     def run(self, frames, pixel_spec, height_match, bg_tolerance, method, colors, palette, stability, deflicker, cleanup,
-            outline):
+            outline, hold_colors=False):
         fr = [f[..., :3] for f in to_rgba_np(frames)]
         out = repixelate(fr, pixel_spec, height_match, bg_tolerance, method, colors, palette, stability, deflicker, cleanup,
-                         outline)
+                         outline, hold_colors)
         pal = frame_palette(pixel_spec, colors, palette)
         cw, ch = pixel_spec["canvas"]
         info = (f"{len(out)} frames -> {cw}x{ch} art px, {len(pal)} colours (sprite has {len(pixel_spec['palette'])}), "
-                f"colour popping {flicker_rate(out):.2f}% of pixels per frame")
+                f"colour popping {flicker_rate(out):.2f}% of pixels per frame"
+                + (", colours held to the first frame" if hold_colors else ""))
         return (to_image_tensor(out), info, palette_to_text(pal))
 
 
