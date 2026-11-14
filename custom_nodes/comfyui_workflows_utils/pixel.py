@@ -285,6 +285,43 @@ def detect_scale(img_rgba, max_scale=64):
     return best
 
 
+GRID_MIN_FIT = 0.3          # below this no block size explains where the picture's colour steps fall
+GRID_MIN_PITCH = 6          # a 4 px "grid" is noise in a smooth picture, not pixel art
+
+
+def lattice_fits(rgb, pitches):
+    """How well the picture's strong colour steps line up every `pitch` px, per pitch: 0 (anywhere) to 1 (all of them)."""
+    a = rgb.astype(np.int32)
+    profs = [(np.abs(np.diff(a, axis=axis)).sum(-1) > 60).sum(axis=1 - axis).astype(np.float64) for axis in (1, 0)]
+    if any(p.sum() == 0 for p in profs):
+        return {q: 0.0 for q in pitches}
+    return {q: float(np.mean([abs((p * np.exp(2j * np.pi * ((np.arange(len(p)) + 1) % q) / q)).sum()) / p.sum() for p in profs]))
+            for q in pitches}
+
+
+def find_grid(img, min_pitch=GRID_MIN_PITCH, max_pitch=40):
+    """The pixel grid a drawing was made on, soft grids included (a model's "pixel art": blocks with blurred or noisy
+    edges, which detect_scale's exact test refuses). Returns (pitch, offset_x, offset_y, fit) or None when it has none.
+    Of the block sizes that fit about as well as the best, the largest is the real one (4 px also fits an 8 px grid)."""
+    rgb = img[..., :3]
+    if img.shape[2] == 4 and (img[..., 3] < 128).any():          # whatever lies under the cut-out must not draw edges
+        clear = img[..., 3] < 128
+        rgb = np.where(clear[..., None], np.median(rgb[clear], axis=0).astype(np.uint8), rgb)
+    pitches = range(4, min(max_pitch, min(rgb.shape[:2]) // 4) + 1)
+    fits = lattice_fits(rgb, pitches) if len(pitches) else {}
+    top = max(fits.values(), default=0.0)
+    if top < GRID_MIN_FIT:
+        return None
+    q = max(k for k, v in fits.items() if v >= 0.9 * top)
+    if q < min_pitch:
+        return None
+    g = rgb.astype(np.float32).sum(2)
+    col, row = np.abs(np.diff(g, axis=1)).sum(0), np.abs(np.diff(g, axis=0)).sum(1)
+    ox = int(np.argmax([col[o::q].sum() for o in range(q)]) + 1) % q
+    oy = int(np.argmax([row[o::q].sum() for o in range(q)]) + 1) % q
+    return q, ox, oy, round(top, 2)
+
+
 # ----------------------------------------------------------------------------- core: grid downsample
 def grid_downsample(rgba, cell_w, cell_h, x0, y0, nx, ny, palette, method="dominant", alpha_cut=0.5, bg_index=None):
     """Sample an (ny, nx) grid of cells (size cell_w x cell_h, origin x0,y0; may be fractional) to palette indices.
@@ -545,6 +582,82 @@ def add_outline(img, palette):
 
 
 
+# ----------------------------------------------------------------------------- styles: smooth and outlined
+STYLE_METHODS = ("auto", "smooth", "outlined")
+STYLE_COLORS = 16           # the colour count the two styles were rated at; 32 was not marked better
+STYLE_SAMPLES = 8           # samples per art-pixel side when the drawing has no grid of its own
+GRID_MEASURES = ("subject height", "longest side")       # sizes that give way to the drawing's own grid
+LUMA = np.array([0.299, 0.587, 0.114], np.float32)
+
+
+def auto_style(grid):
+    """Which style suits a drawing, from the owner's blind ratings (rounds 7, 8 and 10, November 2026): the plain
+    average was marked best on 8 px grids, "dark cluster first" on 16 px grids and on drawings with no grid."""
+    return "smooth" if grid and grid[0] == 8 else "outlined"
+
+
+def pick_blocks(blocks, method):
+    """One colour per block of source pixels. blocks: (ny, nx, n, 4) uint8 -> (rgb (ny, nx, 3) uint8, alpha (ny, nx)).
+
+    smooth:   the average of the block's opaque pixels. No outlines of its own, soft shading.
+    outlined: "dark cluster first". The block's pixels are split by brightness halfway between its darkest and its
+              brightest. A spread under 40 levels is one colour: the median. Otherwise the dark group wins when it
+              is at least a quarter of the block (so a thin outline survives), else the light group; its mean.
+    A block is opaque when at least half of it is."""
+    ny, nx, n, _ = blocks.shape
+    op = blocks[..., 3] >= 128
+    alpha = op.mean(-1) >= 0.5
+    rgb = np.zeros((ny, nx, 3), np.uint8)
+    rows = max(1, (1 << 21) // max(1, nx * n))                    # a few MB of floats at a time
+
+    def mean(col, m):
+        return (col * m[..., None]).sum(2) / np.maximum(m.sum(-1), 1)[..., None]
+
+    for y in range(0, ny, rows):
+        o, keep = op[y:y + rows], alpha[y:y + rows]
+        col = blocks[y:y + rows, ..., :3].astype(np.float64)
+        if method == "smooth":
+            v = mean(col, o)
+        else:
+            lum = blocks[y:y + rows, ..., :3].astype(np.float32) @ LUMA
+            lo, hi = np.where(o, lum, np.inf).min(-1), np.where(o, lum, -np.inf).max(-1)
+            with np.errstate(invalid="ignore"):
+                dark = o & (lum < ((lo + hi) / 2)[..., None])
+                flat = keep & ((hi - lo) < 40)
+            v = np.where((dark.sum(-1) * 4 >= o.sum(-1))[..., None], mean(col, dark), mean(col, o & ~dark))
+            if flat.any():
+                v[flat] = np.nanmedian(np.where(o[flat][..., None], col[flat], np.nan), axis=1)
+        rgb[y:y + rows] = np.where(keep[..., None], np.clip(v, 0, 255), 0).astype(np.uint8)
+    return rgb, alpha
+
+
+def _blocks(rgba, q, x0, y0, nx, ny):
+    """The (ny, nx, q*q, 4) blocks of a q px grid starting at x0, y0. Outside the picture is transparent."""
+    H, W = rgba.shape[:2]
+    left, top, right, bottom = max(0, -x0), max(0, -y0), max(0, x0 + nx * q - W), max(0, y0 + ny * q - H)
+    if left or top or right or bottom:
+        rgba = np.pad(rgba, ((top, bottom), (left, right), (0, 0)))
+    r = rgba[y0 + top:y0 + top + ny * q, x0 + left:x0 + left + nx * q]
+    return r.reshape(ny, q, nx, q, 4).transpose(0, 2, 1, 3, 4).reshape(ny, nx, q * q, 4)
+
+
+def pick_grid(rgba, method, cell, gx, gy, nx, ny):
+    """pick_blocks over a grid of cells. A whole-pixel grid (the drawing's own) is read as it is, never resampled.
+    Any other cell size is first resampled to STYLE_SAMPLES px per cell (Lanczos; the alpha stays hard)."""
+    if all(float(v).is_integer() for v in (cell, gx, gy)):
+        return pick_blocks(_blocks(rgba, int(cell), int(gx), int(gy), nx, ny), method)
+    H, W = rgba.shape[:2]
+    left, top = max(0, int(math.ceil(-gx))), max(0, int(math.ceil(-gy)))
+    right, bottom = max(0, int(math.ceil(gx + nx * cell - W))), max(0, int(math.ceil(gy + ny * cell - H)))
+    if left or top or right or bottom:
+        rgba = np.pad(rgba, ((top, bottom), (left, right), (0, 0)))
+    box = (gx + left, gy + top, gx + left + nx * cell, gy + top + ny * cell)
+    size = (nx * STYLE_SAMPLES, ny * STYLE_SAMPLES)
+    rgb = np.asarray(Image.fromarray(np.ascontiguousarray(rgba[..., :3])).resize(size, Image.LANCZOS, box=box))
+    a = np.asarray(Image.fromarray(np.ascontiguousarray(rgba[..., 3])).resize(size, Image.NEAREST, box=box))
+    return pick_blocks(_blocks(np.dstack([rgb, a]), STYLE_SAMPLES, 0, 0, nx, ny), method)
+
+
 # ----------------------------------------------------------------------------- PixelOE (Apache-2.0) backend
 def pixeloe_available():
     try:
@@ -694,6 +807,8 @@ def kuwahara(rgba, radius):
 def pixelize_frames(frames, pixels, measure, method, colors, palette_text, shared_palette, background, tolerance,
                     cleanup, outline, padding, smooth=0.0, color_error=20.0, edge_cleanup=True):
     frames = [prepare_alpha(f, background, tolerance) for f in frames]
+    style = method in STYLE_METHODS
+    grids = [find_grid(f) if style else None for f in frames]         # before the defringe moves any colour
     edge_cleanup = edge_cleanup and measure != "auto (detect grid)"   # recovering existing pixel art: keep it exact
     if edge_cleanup:                    # defringe: no background-mixed rim colours in the palette or border cells
         frames = [bleed_edges(f, max(1, round(min(f.shape[:2]) / 512))) for f in frames]
@@ -712,13 +827,20 @@ def pixelize_frames(frames, pixels, measure, method, colors, palette_text, share
         shared = pick_palette(allpx)
     # one cell size for all frames/views: from the first frame's subject (equal subject height across views)
     cell = None
-    for f in frames:
+    for f, grid in zip(frames, grids):
         a = f[..., 3] >= 128
         x0, y0, x1, y1 = subject_bbox(a)
+        own_grid = bool(grid) and measure in GRID_MEASURES     # pixel art keeps its own grid: no shrinking by 1.6x
         if measure == "auto (detect grid)":
             s, ox, oy, score = detect_scale(f)
             cs = float(s); gx, gy = float(ox % s), float(oy % s)
             nx, ny = int(math.ceil((f.shape[1] - gx) / cs)), int(math.ceil((f.shape[0] - gy) / cs))
+        elif own_grid:
+            q, ox, oy, _ = grid
+            cs = float(q)
+            ix, iy = (x0 - ox) // q - padding, (y0 - oy) // q - padding
+            nx, ny = -((ox - x1) // q) + padding - ix, -((oy - y1) // q) + padding - iy
+            gx, gy = float(ox + ix * q), float(oy + iy * q)
         else:
             if measure == "body height (per frame)":
                 bx0, by0, bx1, by1 = body_bbox(a)
@@ -746,9 +868,18 @@ def pixelize_frames(frames, pixels, measure, method, colors, palette_text, share
                 ny = int(math.ceil((y1 - y0) / cs)) + 2 * padding
                 gx = (x0 + x1) / 2 - nx * cs / 2
                 gy = y1 + padding * cs - ny * cs
-        if smooth > 0 and measure != "auto (detect grid)":
+        if smooth > 0 and measure != "auto (detect grid)" and not own_grid:
             f = kuwahara(f, round(smooth * cs))
-        pal = shared if shared is not None else pick_palette(palette_pixels(f))
+        if style:
+            # the palette comes from the colours the rule picked, not from the drawing: an average is a new colour
+            used = auto_style(grid) if method == "auto" else method
+            grid_rgb, alpha = pick_grid(f, used, cs, gx, gy, nx, ny)
+            px = grid_rgb[alpha] if alpha.any() else np.zeros((1, 3), np.uint8)
+            pal = shared if shared is not None else (pick_palette(px) if fixed is not None or colors > 0
+                                                     else kmeans_palette(px, STYLE_COLORS))
+            idx = nearest_index(rgb_to_lab(grid_rgb), rgb_to_lab(pal))
+        else:
+            pal = shared if shared is not None else pick_palette(palette_pixels(f))
         use_oe = method == "pixeloe" and measure != "auto (detect grid)" and pixeloe_available()
         if use_oe:
             try:
@@ -762,7 +893,7 @@ def pixelize_frames(frames, pixels, measure, method, colors, palette_text, share
             else:
                 alpha = coverage_alpha(f, cs, gx, gy, nx, ny)
                 idx = nearest_index(rgb_to_lab(grid_rgb), rgb_to_lab(pal))
-        if not use_oe:
+        if not use_oe and not style:
             m = "median" if method == "pixeloe" else method
             idx, alpha = grid_downsample(f, cs, cs, gx, gy, nx, ny, pal, m)
         out = compose(idx, alpha, pal)
@@ -774,9 +905,17 @@ def pixelize_frames(frames, pixels, measure, method, colors, palette_text, share
             outline = "outside darkest"
         if outline:
             out = apply_outline(out, pal, outline)
+        if own_grid and (out[..., 3] > 0).any():              # edge cells under half covered are gone: trim to the figure
+            bx0, by0, bx1, by1 = subject_bbox(out[..., 3] > 0)
+            out = np.pad(out[by0:by1, bx0:bx1], ((padding, padding), (padding, padding), (0, 0)))
         results.append(out)
         palettes.append(pal)
-        infos.append(f"cell {cs:.2f}px -> {out.shape[1]}x{out.shape[0]} art px, {len(np.unique(out[out[..., 3] > 0][:, :3], axis=0))} colours")
+        how = ""
+        if style:
+            how = f", {used}" + (" (auto)" if method == "auto" else "") + (
+                f", read on the drawing's own {grid[0]} px grid" if own_grid else
+                f", drawing has a {grid[0]} px grid" if grid else ", no grid in the drawing")
+        infos.append(f"cell {cs:.2f}px -> {out.shape[1]}x{out.shape[0]} art px, {len(np.unique(out[out[..., 3] > 0][:, :3], axis=0))} colours{how}")
     return results, palettes, infos
 
 
@@ -788,7 +927,7 @@ class Pixelize:
             "pixels": ("INT", {"default": 64, "min": 4, "max": 4096, "tooltip": "Size in art pixels, measured as set in 'measure' (default: subject height). Over 1024 is for wide strips - a parallax layer measured on its longest side - not for sprites."}),
             "measure": (["subject height", "longest side", "image height", "whole frame", "cell size", "body height (per frame)", "auto (detect grid)"],
                         {"tooltip": "What 'pixels' means. subject height uses the first image's grid for all. whole frame = the frame itself becomes 'pixels' tall, nothing cropped to the subject and no padding: for a parallax layer or anything that must keep its exact size and its empty areas. body height (per frame) = each image's body (thin props like staffs ignored) becomes 'pixels' tall: for views drawn at different scales. auto = the input is already (upscaled) pixel art: detect its grid and recover it exactly."}),
-            "method": (["pixeloe", "dominant", "median", "center", "mean"], {"tooltip": "How each art pixel is chosen. pixeloe = PixelOE's contrast-aware method (outline expansion; cleanest for illustrations). dominant = most common palette colour in the cell. median/center/mean = that colour of the cell, snapped to the palette."}),
+            "method": (["pixeloe", "dominant", "median", "center", "mean", "auto", "smooth", "outlined"], {"tooltip": "How each art pixel is chosen. pixeloe = PixelOE's contrast-aware method (outline expansion; cleanest for illustrations). dominant = most common palette colour in the cell. median/center/mean = that colour of the cell, snapped to the palette. The two styles: smooth = the cell's average colour (soft shading, no outlines of its own); outlined = dark cluster first (a dark group of a quarter of the cell wins, so outlines survive); auto = smooth for a drawing on an 8 px grid, outlined otherwise. The styles read a drawing on its own pixel grid when it has one (soft grids too; 'pixels' is then not used, with measure subject height or longest side) and end at 16 colours when colors is 0."}),
             "smooth": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "Edge-preserving smoothing before pixelizing (Kuwahara radius in art pixels). Flattens texture/noise into solid areas; 0 = off. Ignored for 'auto (detect grid)'."}),
             "colors": ("INT", {"default": 16, "min": 0, "max": 256, "tooltip": "Number of colours. 0 = automatic: the fewest colours (at least 10) that keep the colour error under color_error. With a preset/hex palette: use only its N most fitting colours (0 = all)."}),
             "color_error": ("FLOAT", {"default": 20.0, "min": 2.0, "max": 60.0, "step": 0.5, "tooltip": "colors = 0 only: allowed colour difference (Lab, 90th percentile, so small areas like blades and eyes count) from the original. Higher = fewer colours (12 = faithful, 20 = simplified, 30+ = very few)."}),

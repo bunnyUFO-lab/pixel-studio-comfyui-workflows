@@ -122,7 +122,10 @@ python $C run pixel-art/image-to-directions --input "Character image=art/hero.pn
   30 very few), or an exact number; `Pixelize.palette` (`auto`, `PICO-8`, `GameBoy`, `DB32`, `Endesga-32`, or hex list).
 - Animations: `Repixelate ....colors` (0 = sprite palette, N = merge to N of its colours), `.palette` (`sprite` or a
   preset/hex), `.stability` (0.7), `.deflicker`, `.cleanup`. These re-run cheaply on the cached video.
-- `Pixelize.method`: `pixeloe` (default, cleanest outlines), `dominant`, `median`, `center`, `mean`.
+- `Pixelize.method`: `pixeloe` (default, cleanest outlines), `dominant`, `median`, `center`, `mean`. The two styles:
+  `smooth` (each cell's average colour), `outlined` (a dark group of a quarter of the cell wins, so outlines survive)
+  and `auto` (smooth for a drawing on an 8 px grid, outlined otherwise). The styles read a drawing on its own pixel
+  grid when it has one, soft grids included: `pixels` is then not used and nothing is shrunk by a non-whole factor.
 - `Pixelize.smooth`: 0.6 for painted/photo/textured sources, 0 for flat or already pixel-styled art.
 - `Pixelize.cleanup` (stray pixels), `Pixelize.edge_cleanup` (defringe + silhouette smoothing), `Pixelize.outline`
   (`auto`, `darker shade`, `darkest`, `outside darkest`, `none`), `Pixelize.padding`.
