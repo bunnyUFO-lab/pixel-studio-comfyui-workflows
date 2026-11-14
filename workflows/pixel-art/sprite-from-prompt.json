@@ -1023,7 +1023,8 @@
         0.7,
         true,
         true,
-        "none"
+        "none",
+        true
       ],
       "title": "Repixelate (same grid + palette)",
       "color": "#432",

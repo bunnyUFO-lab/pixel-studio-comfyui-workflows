@@ -90,7 +90,7 @@ def sampler(g, cfg, x, latent_src, pos_src, neg_src):
     g.link(*latent_src, 26, 3)
 
 
-def pixel_tail(g, x, decoded, prefix, fps, loop, tag, height_match=False):
+def pixel_tail(g, x, decoded, prefix, fps, loop, tag, height_match=False, hold_colors=False):
     """Raw video, RIFE x2, Repixelate, sprite sheet, Pixel Art Check, previews. Node ids 29-41."""
     node, link = g.node, g.link
     node(29, "VHS_VideoCombine", [x - 360, 470], [320, 420],
@@ -109,6 +109,8 @@ def pixel_tail(g, x, decoded, prefix, fps, loop, tag, height_match=False):
          color=YELLOW, mode=0 if RIFE_ON else 4)
     repix = list(REPIX)
     repix[0] = height_match
+    if hold_colors:                                      # keep the first frame's colours through the clip
+        repix.append(True)
     node(30, "RepixelateFrames", [x, 230], [340, 250], inputs=[inp("frames", "IMAGE"), inp("pixel_spec", "PIXEL_SPEC")],
          outputs=[out("pixel_frames", "IMAGE"), out("info", "STRING"), out("palette", "STRING")], widgets=repix,
          title="Repixelate (same grid + palette)", color=YELLOW)
