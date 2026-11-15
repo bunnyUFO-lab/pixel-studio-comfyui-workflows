@@ -72,8 +72,13 @@ Recipe of the h3-match session (15 Nov 2026), about 55 s a clip, peak VRAM 21.4 
    idle end on something that keeps the motion going. The "Action (written as beats)" input fits attacks as written; for loops write the repeating motion.
 3. Prepare: the WHOLE canvas enlarged x{FACTOR} (nearest neighbour), on the neutral grey or white farthest from the sprite's
    colours. Not a crop of the sprite plus padding, and never a magenta or green key (both bled into the body); x2 was
-   mushy. Larger canvases also work (a walk was clean at x10, 960x1120, 535 s) but cost minutes; keep the canvas under
-   about 1.1 megapixels (1440x1248 peaked at 23.9 GB). Sprites above 96 px were not tried.
+   mushy. The enlargement is the "factor" input of the yellow Prepare node (whole numbers; x4 to x8 were tried).
+   It was the clip LENGTH that decided whether a walk worked, not the size: at {LENGTH} frames the dwarf walks at x4, x6, x8
+   and x10 alike, landing back on frame 1; 124 frames failed from drift and dead holds. Bigger draws legs more clearly
+   (x4 feet are blobby mid-stride, x8 shows knees and feet) at about twice the time (x4 about 55 s, x8 about 90 to
+   95 s, peak about 21.7 GB), but a smash at x8 is slower and never returns to the shoulder. So x{FACTOR} is the default
+   (right for attacks), x8 is worth trying for walks. Keep the canvas under about 1.1 megapixels (1440x1248 peaked at
+   23.9 GB). Sprites above 96 px were not tried.
 4. The sprite is the first frame AND the last frame (a loop: walk, idle), like the Wan and LTX workflows. For a one-shot
    action (attack, cast, smash) disconnect "last_frame" on the yellow "Loop" node, as the app does.
 5. {LENGTH} video frames at 24 fps (the length snaps to 17k+5: 22 is too short for a strike and a return), 8 turbo steps,
