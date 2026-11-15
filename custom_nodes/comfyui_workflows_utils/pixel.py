@@ -1370,6 +1370,37 @@ class HoldFigure:
         return (to_image_tensor(out), info)
 
 
+class PickEvenFrames:
+    """Keep `count` evenly spaced frames of a long clip. A video model makes about 5 s of frames; a sprite clip is
+    ~12 of them, taken across the whole action so the beats (wind-up, strike, settle) are all in it."""
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "frames": ("IMAGE",),
+            "count": ("INT", {"default": 12, "min": 1, "max": 256, "tooltip": "How many frames to keep."}),
+            "skip_first": ("BOOLEAN", {"default": True, "tooltip": "The first video frame is the input sprite itself: leave it out, so the clip starts one step into the motion and ends on the last video frame."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("frames", "info")
+    FUNCTION = "run"
+    CATEGORY = "comfyui_workflows/pixel"
+    DESCRIPTION = "Keep N evenly spaced frames of a clip (across its whole length)."
+
+    @staticmethod
+    def indices(n, count, skip_first=True):
+        """Frame numbers kept out of n: count + 1 points from the first to the last frame, the first one dropped when
+        skip_first; fewer frames than asked for are all kept."""
+        if n <= count:
+            return list(range(n))
+        pts = [int(round(v)) for v in np.linspace(0, n - 1, count + (1 if skip_first else 0))]
+        return pts[1:] if skip_first else pts
+
+    def run(self, frames, count, skip_first):
+        idx = self.indices(int(frames.shape[0]), count, skip_first)
+        return (frames[idx], f"{len(idx)} of {int(frames.shape[0])} frames: {idx}")
+
+
 class RepixelateFrames:
     @classmethod
     def INPUT_TYPES(cls):

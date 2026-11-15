@@ -65,7 +65,7 @@ class SVGStats:
 
 from .edit import CropForMaskedEdit, MaskedEditComposite  # noqa: E402
 from .layered import LayeredVectorize  # noqa: E402
-from .pixel import (CleanCutout, ClearSky, CropToStrip, GridCutout, HoldFigure, MakeTileable, PixelArtCheck, Pixelize, RestoreSpriteCanvas, PrepareSpriteForVideo, RepixelateFrames, SaveDirections,  # noqa: E402
+from .pixel import (CleanCutout, ClearSky, CropToStrip, GridCutout, HoldFigure, MakeTileable, PickEvenFrames, PixelArtCheck, Pixelize, RestoreSpriteCanvas, PrepareSpriteForVideo, RepixelateFrames, SaveDirections,  # noqa: E402
                     SaveSpriteSheet, SpriteAnimationPreview)
 from .prompts import PixelArtPrompt, SceneryPrompt, VectorArtPrompt  # noqa: E402
 from .video import JoinVideoSegments, ResizeForWan, SegmentPrompt, VideoAnchorAndTail, WanSVIProConditioning  # noqa: E402
@@ -89,6 +89,7 @@ NODE_CLASS_MAPPINGS = {
     "ClearSky": ClearSky,
     "PrepareSpriteForVideo": PrepareSpriteForVideo,
     "HoldFigure": HoldFigure,
+    "PickEvenFrames": PickEvenFrames,
     "RepixelateFrames": RepixelateFrames,
     "SaveSpriteSheet": SaveSpriteSheet,
     "SpriteAnimationPreview": SpriteAnimationPreview,
@@ -117,6 +118,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ClearSky": "Clear Sky (transparent down to the skyline)",
     "PrepareSpriteForVideo": "Prepare Pixel Sprite for Video",
     "HoldFigure": "Hold Figure (height, ground line, centre)",
+    "PickEvenFrames": "Pick Even Frames (N across the clip)",
     "RepixelateFrames": "Re-pixelate Frames (same grid + palette)",
     "SaveSpriteSheet": "Save Sprite Sheet (PNG + Aseprite JSON)",
     "SpriteAnimationPreview": "Sprite Animation Preview (playback)",

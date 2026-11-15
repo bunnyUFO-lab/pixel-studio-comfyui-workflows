@@ -21,6 +21,7 @@ these workflows and connect Pixel Studio to them.
 | [`pixel-art/sprite-edit-2511`](workflows/pixel-art/sprite-edit-2511.json) | `sprite-edit` with Qwen-Image-Edit-2511 at 4 steps (Apache 2.0); won the blind picks for recolours and directions. Needs ComfyUI 0.41. |
 | [`pixel-art/sprite-from-prompt`](workflows/pixel-art/sprite-from-prompt.json) | Animates a sprite from a motion prompt into a looping sprite sheet. |
 | [`pixel-art/sprite-from-prompt-ltx25`](workflows/pixel-art/sprite-from-prompt-ltx25.json) | Animates a sprite from a motion prompt with LTX-2.5 (about twice as fast as Wan 2.2 Remix, simpler game-like motion); first = last frame, so it loops. Needs ComfyUI 0.41. |
+| [`pixel-art/sprite-from-prompt-h3`](workflows/pixel-art/sprite-from-prompt-h3.json) | Animates a sprite from a description of the action (character, starting pose, action as beats) with MiniMax H3; the sprite is the first frame. Best for attacks and casts; needs a big canvas (about 36 GB of models, MiniMax H3 licence). Needs ComfyUI 0.41. |
 | [`pixel-art/sprite-from-video`](workflows/pixel-art/sprite-from-video.json) | Animates a sprite by copying the motion of a video. |
 | [`pixel-art/sprite-inbetween`](workflows/pixel-art/sprite-inbetween.json) | Draws the frames between key frames of an animation. |
 | [`pixel-art/prompt-to-tile`](workflows/pixel-art/prompt-to-tile.json) | Makes a seamless terrain tile from a prompt. |
