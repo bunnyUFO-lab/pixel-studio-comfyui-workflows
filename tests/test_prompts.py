@@ -26,6 +26,19 @@ p2 = pp.run("a potion", "item / icon", "as described", 32, "auto (from pixels)",
 check("green background" in p2 and "PICO-8 palette" in p2 and not p2.startswith("Pixel art style") and p2.endswith("glowing"), "pixel prompt: preset palette named, no trigger, extra")
 check("red" in prompts.palette_phrase(0, "#d82828 #f0f0f0"), "hex palette -> colour names")
 
+# the caption form our Flux 2 Klein LoRA was trained on
+cap = pp.run("a bearded pirate wearing a black tricorn hat and a red coat", "LoRA caption", "side (facing right)", 64, "auto (from pixels)", 0, "auto",
+             "dark outline", "solid magenta (chroma key)", True, "", "", "mosspx")[0]
+print(cap)
+check(cap == "a bearded pirate wearing a black tricorn hat and a red coat. Shown full body, side view facing right, on a plain magenta background, in mosspx style.",
+      "caption style: subject, full body, view, plain magenta background, trigger last")
+check(pp.run("a chest", "LoRA caption", "as described", 32, "auto (from pixels)", 0, "auto", "no outline", "plain white", False, "")[0]
+      == "a chest. Shown full body, on a plain white background.", "caption style: no view, no trigger")
+check(pp.run("a chest", "LoRA caption", "front", 32, "auto (from pixels)", 0, "auto", "no outline", "plain white", True, "", "", "PXART4 style.")[0].endswith("in PXART4 style."),
+      "caption style: a trigger that already says 'style' is not doubled")
+check("Subject:" in pp.run("a chest", "chibi", "front", 32, "auto (from pixels)", 0, "auto", "no outline", "plain white", True, "")[0],
+      "the other styles still use the template")
+
 vp = prompts.VectorArtPrompt()
 r, vc, vpal = vp.run("redraw <image1>", "", "faithful flat redraw", 6, "", "medium", "bold dark outlines", "one shadow + one highlight", "plain white", "")
 print(r)
