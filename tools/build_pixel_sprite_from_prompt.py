@@ -57,15 +57,22 @@ def model_props(type_, name, directory, url=None):
 
 
 ATTACK_HF = "https://huggingface.co/Teluv/Wan_Video_Attack_Sprite_Animation/resolve/main/"
-# Optional alternative LoRA (Apache-2.0) the Sprite Studio app swaps in for attacks with slash effects; listed so
+# Optional alternative LoRAs the Sprite Studio app swaps in (attacks with slash effects: Teluv, Apache-2.0; walks: below); listed so
 # docker/models.py downloads it with this workflow (ComfyUI loads only the one the node names).
 ATTACK = {"HIGH": ("wan_attack_sprite_v3_high_noise.safetensors", ATTACK_HF + "Wan_i14b_Attack_Sprite_Animation_ver3_high_noise.safetensors"),
           "LOW": ("wan_attack_sprite_v3_low_noise.safetensors", ATTACK_HF + "Wan_i14b_Attack_Sprite_Animation_ver3_low_noise.safetensors")}
 
 
+# Pixel walk LoRA (theamusing, MIT, trigger "pix3lwalk"): the app swaps it in for side-view walks, HIGH + LOW at 0.8
+# (webapp/app/ops.py WALK_LORAS). sha256 16f623f5... (high) and e83e0d54... (low), as on the owner's PC.
+WALK_HF = "https://huggingface.co/theamusing/wan2.2_pixel_walk_lora/resolve/main/"
+WALK = {"HIGH": "pixel_walk_lora_v1_high_noise.safetensors", "LOW": "pixel_walk_lora_v1_low_noise.safetensors"}
+
+
 def lora_props(which):
     pr = model_props("LoraLoaderModelOnly", PIXEL_ANIM_LORA, "loras", PIXEL_ANIM_LORA_URL)
     pr["models"].append({"name": ATTACK[which][0], "url": ATTACK[which][1], "directory": "loras"})
+    pr["models"].append({"name": WALK[which], "url": WALK_HF + WALK[which], "directory": "loras"})
     return pr
 
 

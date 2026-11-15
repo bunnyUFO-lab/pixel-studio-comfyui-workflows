@@ -129,6 +129,11 @@
             "name": "wan_attack_sprite_v3_high_noise.safetensors",
             "url": "https://huggingface.co/Teluv/Wan_Video_Attack_Sprite_Animation/resolve/main/Wan_i14b_Attack_Sprite_Animation_ver3_high_noise.safetensors",
             "directory": "loras"
+          },
+          {
+            "name": "pixel_walk_lora_v1_high_noise.safetensors",
+            "url": "https://huggingface.co/theamusing/wan2.2_pixel_walk_lora/resolve/main/pixel_walk_lora_v1_high_noise.safetensors",
+            "directory": "loras"
           }
         ]
       },
@@ -180,6 +185,11 @@
           {
             "name": "wan_attack_sprite_v3_low_noise.safetensors",
             "url": "https://huggingface.co/Teluv/Wan_Video_Attack_Sprite_Animation/resolve/main/Wan_i14b_Attack_Sprite_Animation_ver3_low_noise.safetensors",
+            "directory": "loras"
+          },
+          {
+            "name": "pixel_walk_lora_v1_low_noise.safetensors",
+            "url": "https://huggingface.co/theamusing/wan2.2_pixel_walk_lora/resolve/main/pixel_walk_lora_v1_low_noise.safetensors",
             "directory": "loras"
           }
         ]
