@@ -56,13 +56,14 @@ def source(node, input_name):
 # inputs the app sets by title
 for title in ("Pixel sprite", "Character (one sentence)", "Starting pose", "Action (beats: wind-up, strike, impact, settle)",
               "Use character and pose in the prompt", "Frames to keep (across the whole clip)", "Noise (seed here)",
-              "H3: first frame = sprite / video frames", "Prepare sprite (integer upscale)", "Hold figure (height, ground line, centre)",
+              "Loop (first = last frame) / video frames", "Prepare sprite (integer upscale)", "Hold figure (height, ground line, centre)",
               "Save sprite sheet"):
     check(title in by_title, f"input by title: {title}")
 check(by_title["Noise (seed here)"]["widgets_values"][0] == 6305, "seed is the first widget of the noise node")
-h3 = by_title["H3: first frame = sprite / video frames"]
+h3 = by_title["Loop (first = last frame) / video frames"]
 check(h3["widgets_values"][3] == 124 and (h3["widgets_values"][3] - 5) % 17 == 0, "video length 124 sits on the 17k+5 grid")
-check(source(h3, "first_frame")["type"] == "PrepareSpriteForVideo" and source(h3, "last_frame") is None, "the sprite is the first frame only")
+check(source(h3, "first_frame")["type"] == "PrepareSpriteForVideo" and source(h3, "last_frame") is source(h3, "first_frame"),
+      "the sprite is the first and the last frame (a loop); the app unlinks last_frame for a one-shot, as it does for Wan")
 check(source(h3, "prompt")["type"] == "ComfySwitchNode", "the prompt comes from the character/pose switch")
 check(by_title["Use character and pose in the prompt"]["widgets_values"][0] is False, "the tested form (action alone) is the default")
 

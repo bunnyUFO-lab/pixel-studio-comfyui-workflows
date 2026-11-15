@@ -2,7 +2,7 @@
   "id": "2de1b96b-aac3-5669-bab9-59fd8e6df26b",
   "revision": 0,
   "last_node_id": 60,
-  "last_link_id": 42,
+  "last_link_id": 43,
   "nodes": [
     {
       "id": 1,
@@ -108,7 +108,7 @@
           "type": "VAE",
           "links": [
             15,
-            28
+            29
           ],
           "slot_index": 0
         }
@@ -154,8 +154,8 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            19,
-            20
+            20,
+            21
           ],
           "slot_index": 0
         }
@@ -287,7 +287,8 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            18
+            18,
+            19
           ],
           "slot_index": 0
         },
@@ -295,8 +296,8 @@
           "name": "pixel_spec",
           "type": "PIXEL_SPEC",
           "links": [
-            31,
-            33
+            32,
+            34
           ],
           "slot_index": 1
         },
@@ -704,7 +705,7 @@
         {
           "name": "last_frame",
           "type": "IMAGE",
-          "link": null
+          "link": 19
         }
       ],
       "outputs": [
@@ -712,7 +713,7 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            21
+            22
           ],
           "slot_index": 0
         },
@@ -720,7 +721,7 @@
           "name": "latent",
           "type": "LATENT",
           "links": [
-            26
+            27
           ],
           "slot_index": 1
         }
@@ -734,7 +735,7 @@
         1024,
         124
       ],
-      "title": "H3: first frame = sprite / video frames",
+      "title": "Loop (first = last frame) / video frames",
       "color": "#432",
       "bgcolor": "#653"
     },
@@ -758,7 +759,7 @@
           "name": "NOISE",
           "type": "NOISE",
           "links": [
-            22
+            23
           ],
           "slot_index": 0
         }
@@ -792,7 +793,7 @@
           "name": "SAMPLER",
           "type": "SAMPLER",
           "links": [
-            24
+            25
           ],
           "slot_index": 0
         }
@@ -822,7 +823,7 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 19
+          "link": 20
         }
       ],
       "outputs": [
@@ -830,7 +831,7 @@
           "name": "SIGMAS",
           "type": "SIGMAS",
           "links": [
-            25
+            26
           ],
           "slot_index": 0
         }
@@ -863,12 +864,12 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 20
+          "link": 21
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 21
+          "link": 22
         }
       ],
       "outputs": [
@@ -876,7 +877,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            23
+            24
           ],
           "slot_index": 0
         }
@@ -903,27 +904,27 @@
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 22
+          "link": 23
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 23
+          "link": 24
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 24
+          "link": 25
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 25
+          "link": 26
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 26
+          "link": 27
         }
       ],
       "outputs": [
@@ -931,7 +932,7 @@
           "name": "output",
           "type": "LATENT",
           "links": [
-            27
+            28
           ],
           "slot_index": 0
         },
@@ -964,12 +965,12 @@
         {
           "name": "samples",
           "type": "LATENT",
-          "link": 27
+          "link": 28
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 28
+          "link": 29
         }
       ],
       "outputs": [
@@ -977,8 +978,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            29,
-            30
+            30,
+            31
           ],
           "slot_index": 0
         }
@@ -1006,7 +1007,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 29
+          "link": 30
         },
         {
           "name": "audio",
@@ -1072,12 +1073,12 @@
         {
           "name": "frames",
           "type": "IMAGE",
-          "link": 30
+          "link": 31
         },
         {
           "name": "pixel_spec",
           "type": "PIXEL_SPEC",
-          "link": 31
+          "link": 32
         }
       ],
       "outputs": [
@@ -1085,7 +1086,7 @@
           "name": "frames",
           "type": "IMAGE",
           "links": [
-            32
+            33
           ],
           "slot_index": 0
         },
@@ -1093,7 +1094,7 @@
           "name": "info",
           "type": "STRING",
           "links": [
-            34
+            35
           ],
           "slot_index": 1
         }
@@ -1127,12 +1128,12 @@
         {
           "name": "frames",
           "type": "IMAGE",
-          "link": 32
+          "link": 33
         },
         {
           "name": "pixel_spec",
           "type": "PIXEL_SPEC",
-          "link": 33
+          "link": 34
         }
       ],
       "outputs": [
@@ -1140,7 +1141,7 @@
           "name": "pixel_frames",
           "type": "IMAGE",
           "links": [
-            35
+            36
           ],
           "slot_index": 0
         },
@@ -1148,7 +1149,7 @@
           "name": "info",
           "type": "STRING",
           "links": [
-            40
+            41
           ],
           "slot_index": 1
         },
@@ -1195,7 +1196,7 @@
         {
           "name": "frames",
           "type": "IMAGE",
-          "link": 35
+          "link": 36
         }
       ],
       "outputs": [
@@ -1203,7 +1204,7 @@
           "name": "frames",
           "type": "IMAGE",
           "links": [
-            36
+            37
           ],
           "slot_index": 0
         },
@@ -1242,7 +1243,7 @@
         {
           "name": "frames",
           "type": "IMAGE",
-          "link": 36
+          "link": 37
         }
       ],
       "outputs": [
@@ -1255,8 +1256,8 @@
           "name": "frames",
           "type": "IMAGE",
           "links": [
-            37,
-            41
+            38,
+            42
           ],
           "slot_index": 1
         },
@@ -1264,7 +1265,7 @@
           "name": "info",
           "type": "STRING",
           "links": [
-            39
+            40
           ],
           "slot_index": 2
         },
@@ -1272,7 +1273,7 @@
           "name": "fps",
           "type": "INT",
           "links": [
-            42
+            43
           ],
           "slot_index": 3
         }
@@ -1314,7 +1315,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 37
+          "link": 38
         }
       ],
       "outputs": [
@@ -1322,7 +1323,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            38
+            39
           ],
           "slot_index": 0
         },
@@ -1360,7 +1361,7 @@
         {
           "name": "source",
           "type": "*",
-          "link": 38
+          "link": 39
         }
       ],
       "outputs": [],
@@ -1387,7 +1388,7 @@
         {
           "name": "source",
           "type": "*",
-          "link": 39
+          "link": 40
         }
       ],
       "outputs": [],
@@ -1414,7 +1415,7 @@
         {
           "name": "source",
           "type": "*",
-          "link": 40
+          "link": 41
         }
       ],
       "outputs": [],
@@ -1441,7 +1442,7 @@
         {
           "name": "source",
           "type": "*",
-          "link": 34
+          "link": 35
         }
       ],
       "outputs": [],
@@ -1468,12 +1469,12 @@
         {
           "name": "frames",
           "type": "IMAGE",
-          "link": 41
+          "link": 42
         },
         {
           "name": "fps",
           "type": "INT",
-          "link": 42,
+          "link": 43,
           "widget": {
             "name": "fps"
           }
@@ -1511,7 +1512,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "Pixel sprite + action description -> animated sprite sheet, with MiniMax H3\n\n1. Load your sprite (blue): native pixel art on a transparent or plain background (an upscaled copy is fine: its\n   grid is detected). Output art pixels, size and palette stay exactly the sprite's.\n2. Describe the action (green), the way the owner's recipe does:\n   - Character: one sentence saying what it is (\"a stocky dwarf blacksmith with a braided red beard...\").\n   - Starting pose: \"standing upright facing right with the hammer resting on his shoulder\".\n   - Action: two or three plain sentences written as BEATS: wind-up, strike, impact, settle. PixelLab's prompt fixer\n     rewrites an ask like this; it is not available here, so write the beats yourself or let the app do it.\n   The form that was tested is the ACTION text alone (switch \"Use character and pose in the prompt\" off): the model\n   sees the sprite as its first frame, so it does not need to be told what the character looks like. Switch it on to\n   put character, pose and action in one prompt (not tested).\n3. The sprite is the FIRST frame only. For a looping clip (idle, walk) link the green Prepare sprite image to\n   \"last_frame\" of the H3 node too (the sprite is then also the last frame).\n4. Video frames 124 at 24 fps (~5 s, the shortest the model was trained on; the length snaps to 17k+5). Frames kept\n   = how many sprite frames to keep, spread across the whole clip. 8 turbo steps, no CFG. Seed in \"Noise\".\n5. Canvas size matters. target_size 1024 gives about 960x1120 for a 52x59 sprite: colours and the figure stay clean\n   (a 480x640 canvas gave colour speckle and a hammer floating off the shoulder on a walk). Peak VRAM 21.4 GB of 24\n   at 960x1120, 535 s; 1440x1248 peaked at 23.9 GB: keep the canvas under about 1.1 megapixels.\n6. Hold figure (yellow, on) puts the figure at the clip's median height, ground line and centre on the raw frames.\n   Re-pixelate then snaps every frame to the sprite's grid and palette. The colour hold is off here (hold_colors): it\n   flattened an impact frame with a white slash effect. Turn it on if the clip's colours drift paler.\nGood for action clips (attack, cast, smash). Walks work only on a big canvas and run livelier than the hosted tool's.\nModels (~36 GB): H3 first-last-frame w6a8 16 GB, Qwen3-VL 32B encoder 15.7 GB, video VAE, 8-step turbo LoRA.\nLicence: MiniMax H3 Community Licence Agreement."
+        "Pixel sprite + action description -> animated sprite sheet, with MiniMax H3\n\n1. Load your sprite (blue): native pixel art on a transparent or plain background (an upscaled copy is fine: its\n   grid is detected). Output art pixels, size and palette stay exactly the sprite's.\n2. Describe the action (green), the way the owner's recipe does:\n   - Character: one sentence saying what it is (\"a stocky dwarf blacksmith with a braided red beard...\").\n   - Starting pose: \"standing upright facing right with the hammer resting on his shoulder\".\n   - Action: two or three plain sentences written as BEATS: wind-up, strike, impact, settle. PixelLab's prompt fixer\n     rewrites an ask like this; it is not available here, so write the beats yourself or let the app do it.\n   The form that was tested is the ACTION text alone (switch \"Use character and pose in the prompt\" off): the model\n   sees the sprite as its first frame, so it does not need to be told what the character looks like. Switch it on to\n   put character, pose and action in one prompt (not tested).\n3. The sprite is the first frame AND the last frame (a loop: idle, walk), like the Wan and LTX workflows. For a one-shot\n   action (attack, cast, smash) disconnect \"last_frame\" on the yellow \"Loop\" node, as the app does. The action clips\n   that were tested ran with the first frame only; a walk was tested both ways.\n4. Video frames 124 at 24 fps (~5 s, the shortest the model was trained on; the length snaps to 17k+5). Frames kept\n   = how many sprite frames to keep, spread across the whole clip. 8 turbo steps, no CFG. Seed in \"Noise\".\n5. Canvas size matters. target_size 1024 gives about 960x1120 for a 52x59 sprite: colours and the figure stay clean\n   (a 480x640 canvas gave colour speckle and a hammer floating off the shoulder on a walk). Peak VRAM 21.4 GB of 24\n   at 960x1120, 535 s; 1440x1248 peaked at 23.9 GB: keep the canvas under about 1.1 megapixels.\n6. Hold figure (yellow, on) puts the figure at the clip's median height, ground line and centre on the raw frames.\n   Re-pixelate then snaps every frame to the sprite's grid and palette. The colour hold is off here (hold_colors): it\n   flattened an impact frame with a white slash effect. Turn it on if the clip's colours drift paler.\nGood for action clips (attack, cast, smash). Walks work only on a big canvas and run livelier than the hosted tool's.\nModels (~36 GB): H3 first-last-frame w6a8 16 GB, Qwen3-VL 32B encoder 15.7 GB, video VAE, 8-step turbo LoRA.\nLicence: MiniMax H3 Community Licence Agreement."
       ],
       "title": "READ ME"
     }
@@ -1663,6 +1664,14 @@
     ],
     [
       19,
+      12,
+      0,
+      30,
+      6,
+      "IMAGE"
+    ],
+    [
+      20,
       4,
       0,
       42,
@@ -1670,7 +1679,7 @@
       "MODEL"
     ],
     [
-      20,
+      21,
       4,
       0,
       43,
@@ -1678,7 +1687,7 @@
       "MODEL"
     ],
     [
-      21,
+      22,
       30,
       0,
       43,
@@ -1686,7 +1695,7 @@
       "CONDITIONING"
     ],
     [
-      22,
+      23,
       40,
       0,
       44,
@@ -1694,7 +1703,7 @@
       "NOISE"
     ],
     [
-      23,
+      24,
       43,
       0,
       44,
@@ -1702,7 +1711,7 @@
       "GUIDER"
     ],
     [
-      24,
+      25,
       41,
       0,
       44,
@@ -1710,7 +1719,7 @@
       "SAMPLER"
     ],
     [
-      25,
+      26,
       42,
       0,
       44,
@@ -1718,7 +1727,7 @@
       "SIGMAS"
     ],
     [
-      26,
+      27,
       30,
       1,
       44,
@@ -1726,7 +1735,7 @@
       "LATENT"
     ],
     [
-      27,
+      28,
       44,
       0,
       45,
@@ -1734,7 +1743,7 @@
       "LATENT"
     ],
     [
-      28,
+      29,
       3,
       0,
       45,
@@ -1742,7 +1751,7 @@
       "VAE"
     ],
     [
-      29,
+      30,
       45,
       0,
       46,
@@ -1750,7 +1759,7 @@
       "IMAGE"
     ],
     [
-      30,
+      31,
       45,
       0,
       50,
@@ -1758,7 +1767,7 @@
       "IMAGE"
     ],
     [
-      31,
+      32,
       12,
       1,
       50,
@@ -1766,7 +1775,7 @@
       "PIXEL_SPEC"
     ],
     [
-      32,
+      33,
       50,
       0,
       51,
@@ -1774,7 +1783,7 @@
       "IMAGE"
     ],
     [
-      33,
+      34,
       12,
       1,
       51,
@@ -1782,7 +1791,7 @@
       "PIXEL_SPEC"
     ],
     [
-      34,
+      35,
       50,
       1,
       58,
@@ -1790,7 +1799,7 @@
       "STRING"
     ],
     [
-      35,
+      36,
       51,
       0,
       52,
@@ -1798,7 +1807,7 @@
       "IMAGE"
     ],
     [
-      36,
+      37,
       52,
       0,
       53,
@@ -1806,7 +1815,7 @@
       "IMAGE"
     ],
     [
-      37,
+      38,
       53,
       1,
       54,
@@ -1814,7 +1823,7 @@
       "IMAGE"
     ],
     [
-      38,
+      39,
       54,
       0,
       55,
@@ -1822,7 +1831,7 @@
       "STRING"
     ],
     [
-      39,
+      40,
       53,
       2,
       56,
@@ -1830,7 +1839,7 @@
       "STRING"
     ],
     [
-      40,
+      41,
       51,
       1,
       57,
@@ -1838,7 +1847,7 @@
       "STRING"
     ],
     [
-      41,
+      42,
       53,
       1,
       59,
@@ -1846,7 +1855,7 @@
       "IMAGE"
     ],
     [
-      42,
+      43,
       53,
       3,
       59,

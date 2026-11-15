@@ -65,8 +65,9 @@ NOTE = f"""Pixel sprite + action description -> animated sprite sheet, with Mini
    The form that was tested is the ACTION text alone (switch "Use character and pose in the prompt" off): the model
    sees the sprite as its first frame, so it does not need to be told what the character looks like. Switch it on to
    put character, pose and action in one prompt (not tested).
-3. The sprite is the FIRST frame only. For a looping clip (idle, walk) link the green Prepare sprite image to
-   "last_frame" of the H3 node too (the sprite is then also the last frame).
+3. The sprite is the first frame AND the last frame (a loop: idle, walk), like the Wan and LTX workflows. For a one-shot
+   action (attack, cast, smash) disconnect "last_frame" on the yellow "Loop" node, as the app does. The action clips
+   that were tested ran with the first frame only; a walk was tested both ways.
 4. Video frames {LENGTH} at 24 fps (~5 s, the shortest the model was trained on; the length snaps to 17k+5). Frames kept
    = how many sprite frames to keep, spread across the whole clip. 8 turbo steps, no CFG. Seed in "Noise".
 5. Canvas size matters. target_size {TARGET_SIZE} gives about 960x1120 for a 52x59 sprite: colours and the figure stay clean
@@ -131,7 +132,7 @@ node(30, "MiniMaxH3ImageToVideo", [1300, 0], [340, 250],
              inp("width", "INT", "width"), inp("height", "INT", "height"),
              inp("first_frame", "IMAGE"), inp("last_frame", "IMAGE")],
      outputs=[out("positive", "CONDITIONING"), out("latent", "LATENT")],
-     widgets=["", TARGET_SIZE, TARGET_SIZE, LENGTH], title="H3: first frame = sprite / video frames", color=YELLOW)
+     widgets=["", TARGET_SIZE, TARGET_SIZE, LENGTH], title="Loop (first = last frame) / video frames", color=YELLOW)
 node(40, "RandomNoise", [1300, 300], [300, 82], outputs=[out("NOISE", "NOISE")], widgets=[SEED, "randomize"],
      title="Noise (seed here)")
 node(41, "KSamplerSelect", [1300, 420], [300, 58], outputs=[out("SAMPLER", "SAMPLER")], widgets=["res_multistep"])
@@ -193,6 +194,7 @@ link(3, 0, 30, 1)
 link(12, 2, 30, 3)
 link(12, 3, 30, 4)
 link(12, 0, 30, 5)           # first frame = the sprite
+link(12, 0, 30, 6)           # last frame = the sprite (loop); the app unlinks "last_frame" for a one-shot action
 link(4, 0, 42, 0)
 link(4, 0, 43, 0)
 link(30, 0, 43, 1)
