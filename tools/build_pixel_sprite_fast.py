@@ -90,7 +90,14 @@ def sampler(g, cfg, x, latent_src, pos_src, neg_src):
     g.link(*latent_src, 26, 3)
 
 
-def pixel_tail(g, x, decoded, prefix, fps, loop, tag, height_match=False, hold_colors=False):
+def hold_figure_node(g, id_, pos, frames_id, spec_id, enabled=True, strength=0.7):
+    """HoldFigure between the decoded video and Re-pixelate: links are made by the caller."""
+    g.node(id_, "HoldFigure", pos, [340, 110], inputs=[inp("frames", "IMAGE"), inp("pixel_spec", "PIXEL_SPEC")],
+           outputs=[out("frames", "IMAGE"), out("info", "STRING")], widgets=[enabled, strength],
+           title="Hold figure (height, ground line, centre)", color=YELLOW)
+
+
+def pixel_tail(g, x, decoded, prefix, fps, loop, tag, height_match=False, hold_colors=False, hold_figure=False):
     """Raw video, RIFE x2, Repixelate, sprite sheet, Pixel Art Check, previews. Node ids 29-41."""
     node, link = g.node, g.link
     node(29, "VHS_VideoCombine", [x - 360, 470], [320, 420],
@@ -127,7 +134,13 @@ def pixel_tail(g, x, decoded, prefix, fps, loop, tag, height_match=False, hold_c
     link(*decoded, 29, 0)
     link(40, 0, 41, 0)
     link(*decoded, 41, 1)
-    link(41, 0, 30, 0)
+    if hold_figure:                                      # one height, ground line and centre for the whole clip
+        hold_figure_node(g, 42, [x, 190], 41, 12)
+        link(41, 0, 42, 0)
+        link(12, 1, 42, 1)
+        link(42, 0, 30, 0)
+    else:
+        link(41, 0, 30, 0)
     link(12, 1, 30, 1)
     link(30, 0, 31, 0)
     link(31, 1, 32, 0)
