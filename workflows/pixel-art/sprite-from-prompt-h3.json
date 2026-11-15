@@ -2,7 +2,7 @@
   "id": "2de1b96b-aac3-5669-bab9-59fd8e6df26b",
   "revision": 0,
   "last_node_id": 60,
-  "last_link_id": 43,
+  "last_link_id": 41,
   "nodes": [
     {
       "id": 1,
@@ -296,7 +296,6 @@
           "name": "pixel_spec",
           "type": "PIXEL_SPEC",
           "links": [
-            32,
             34
           ],
           "slot_index": 1
@@ -330,10 +329,12 @@
         "Node name for S&R": "PrepareSpriteForVideo"
       },
       "widgets_values": [
-        1024,
-        0.5,
+        384,
+        0.0,
         "auto",
-        32
+        32,
+        "whole canvas",
+        4
       ],
       "title": "Prepare sprite (integer upscale)",
       "color": "#432",
@@ -468,7 +469,7 @@
       "widgets_values": [
         "Raise the hammer overhead with a quick, forceful arc, then slam the head down into the ground with heavy momentum. Pause momentarily for impact weight, then heave the hammer back up and settle it onto the shoulder to reset."
       ],
-      "title": "Action (beats: wind-up, strike, impact, settle)",
+      "title": "Action (written as beats)",
       "color": "#232",
       "bgcolor": "#353"
     },
@@ -731,9 +732,9 @@
       },
       "widgets_values": [
         "",
-        1024,
-        1024,
-        124
+        384,
+        384,
+        39
       ],
       "title": "Loop (first = last frame) / video frames",
       "color": "#432",
@@ -1057,14 +1058,14 @@
     },
     {
       "id": 50,
-      "type": "HoldFigure",
+      "type": "PickEvenFrames",
       "pos": [
         1680,
         0
       ],
       "size": [
         340,
-        110
+        106
       ],
       "flags": {},
       "order": 24,
@@ -1074,11 +1075,6 @@
           "name": "frames",
           "type": "IMAGE",
           "link": 31
-        },
-        {
-          "name": "pixel_spec",
-          "type": "PIXEL_SPEC",
-          "link": 32
         }
       ],
       "outputs": [
@@ -1094,25 +1090,25 @@
           "name": "info",
           "type": "STRING",
           "links": [
-            35
+            32
           ],
           "slot_index": 1
         }
       ],
       "properties": {
-        "Node name for S&R": "HoldFigure"
+        "Node name for S&R": "PickEvenFrames"
       },
       "widgets_values": [
-        true,
-        0.7
+        13,
+        false
       ],
-      "title": "Hold figure (height, ground line, centre)",
-      "color": "#432",
-      "bgcolor": "#653"
+      "title": "Frames to keep (across the whole clip)",
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 51,
-      "type": "RepixelateFrames",
+      "type": "CleanVideoFrames",
       "pos": [
         1680,
         150
@@ -1141,7 +1137,7 @@
           "name": "pixel_frames",
           "type": "IMAGE",
           "links": [
-            36
+            35
           ],
           "slot_index": 0
         },
@@ -1149,7 +1145,7 @@
           "name": "info",
           "type": "STRING",
           "links": [
-            41
+            39
           ],
           "slot_index": 1
         },
@@ -1160,34 +1156,30 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RepixelateFrames"
+        "Node name for S&R": "CleanVideoFrames"
       },
       "widgets_values": [
-        false,
-        18.0,
-        "dominant",
-        0,
-        "sprite",
-        0.7,
+        60.0,
+        4,
+        40.0,
         true,
         true,
-        "none",
-        false
+        true
       ],
-      "title": "Repixelate (same grid + palette)",
+      "title": "Clean up (block vote, palette, effect colours)",
       "color": "#432",
       "bgcolor": "#653"
     },
     {
-      "id": 52,
-      "type": "PickEvenFrames",
+      "id": 53,
+      "type": "SaveSpriteSheet",
       "pos": [
         1680,
         440
       ],
       "size": [
         340,
-        106
+        330
       ],
       "flags": {},
       "order": 26,
@@ -1196,54 +1188,7 @@
         {
           "name": "frames",
           "type": "IMAGE",
-          "link": 36
-        }
-      ],
-      "outputs": [
-        {
-          "name": "frames",
-          "type": "IMAGE",
-          "links": [
-            37
-          ],
-          "slot_index": 0
-        },
-        {
-          "name": "info",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "PickEvenFrames"
-      },
-      "widgets_values": [
-        12,
-        true
-      ],
-      "title": "Frames to keep (across the whole clip)",
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 53,
-      "type": "SaveSpriteSheet",
-      "pos": [
-        1680,
-        590
-      ],
-      "size": [
-        340,
-        330
-      ],
-      "flags": {},
-      "order": 27,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "frames",
-          "type": "IMAGE",
-          "link": 37
+          "link": 35
         }
       ],
       "outputs": [
@@ -1256,8 +1201,8 @@
           "name": "frames",
           "type": "IMAGE",
           "links": [
-            38,
-            42
+            36,
+            40
           ],
           "slot_index": 1
         },
@@ -1265,7 +1210,7 @@
           "name": "info",
           "type": "STRING",
           "links": [
-            40
+            38
           ],
           "slot_index": 2
         },
@@ -1273,7 +1218,7 @@
           "name": "fps",
           "type": "INT",
           "links": [
-            43
+            41
           ],
           "slot_index": 3
         }
@@ -1309,13 +1254,13 @@
         106
       ],
       "flags": {},
-      "order": 28,
+      "order": 27,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 38
+          "link": 36
         }
       ],
       "outputs": [
@@ -1323,7 +1268,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            39
+            37
           ],
           "slot_index": 0
         },
@@ -1355,13 +1300,13 @@
         200
       ],
       "flags": {},
-      "order": 29,
+      "order": 28,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 39
+          "link": 37
         }
       ],
       "outputs": [],
@@ -1382,13 +1327,13 @@
         160
       ],
       "flags": {},
-      "order": 30,
+      "order": 29,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 40
+          "link": 38
         }
       ],
       "outputs": [],
@@ -1409,20 +1354,20 @@
         160
       ],
       "flags": {},
-      "order": 31,
+      "order": 30,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 41
+          "link": 39
         }
       ],
       "outputs": [],
       "properties": {
         "Node name for S&R": "PreviewAny"
       },
-      "title": "Re-pixelate info (colours, popping)"
+      "title": "Clean-up info (colours, popping)"
     },
     {
       "id": 58,
@@ -1436,20 +1381,20 @@
         160
       ],
       "flags": {},
-      "order": 32,
+      "order": 31,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 35
+          "link": 32
         }
       ],
       "outputs": [],
       "properties": {
         "Node name for S&R": "PreviewAny"
       },
-      "title": "Hold figure info"
+      "title": "Frames kept"
     },
     {
       "id": 59,
@@ -1463,18 +1408,18 @@
         680
       ],
       "flags": {},
-      "order": 33,
+      "order": 32,
       "mode": 0,
       "inputs": [
         {
           "name": "frames",
           "type": "IMAGE",
-          "link": 42
+          "link": 40
         },
         {
           "name": "fps",
           "type": "INT",
-          "link": 43,
+          "link": 41,
           "widget": {
             "name": "fps"
           }
@@ -1512,7 +1457,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "Pixel sprite + action description -> animated sprite sheet, with MiniMax H3\n\n1. Load your sprite (blue): native pixel art on a transparent or plain background (an upscaled copy is fine: its\n   grid is detected). Output art pixels, size and palette stay exactly the sprite's.\n2. Describe the action (green), the way the owner's recipe does:\n   - Character: one sentence saying what it is (\"a stocky dwarf blacksmith with a braided red beard...\").\n   - Starting pose: \"standing upright facing right with the hammer resting on his shoulder\".\n   - Action: two or three plain sentences written as BEATS: wind-up, strike, impact, settle. PixelLab's prompt fixer\n     rewrites an ask like this; it is not available here, so write the beats yourself or let the app do it.\n   The form that was tested is the ACTION text alone (switch \"Use character and pose in the prompt\" off): the model\n   sees the sprite as its first frame, so it does not need to be told what the character looks like. Switch it on to\n   put character, pose and action in one prompt (not tested).\n3. The sprite is the first frame AND the last frame (a loop: idle, walk), like the Wan and LTX workflows. For a one-shot\n   action (attack, cast, smash) disconnect \"last_frame\" on the yellow \"Loop\" node, as the app does. The action clips\n   that were tested ran with the first frame only; a walk was tested both ways.\n4. Video frames 124 at 24 fps (~5 s, the shortest the model was trained on; the length snaps to 17k+5). Frames kept\n   = how many sprite frames to keep, spread across the whole clip. 8 turbo steps, no CFG. Seed in \"Noise\".\n5. Canvas size matters. target_size 1024 gives about 960x1120 for a 52x59 sprite: colours and the figure stay clean\n   (a 480x640 canvas gave colour speckle and a hammer floating off the shoulder on a walk). Peak VRAM 21.4 GB of 24\n   at 960x1120, 535 s; 1440x1248 peaked at 23.9 GB: keep the canvas under about 1.1 megapixels.\n6. Hold figure (yellow, on) puts the figure at the clip's median height, ground line and centre on the raw frames.\n   Re-pixelate then snaps every frame to the sprite's grid and palette. The colour hold is off here (hold_colors): it\n   flattened an impact frame with a white slash effect. Turn it on if the clip's colours drift paler.\nGood for action clips (attack, cast, smash). Walks work only on a big canvas and run livelier than the hosted tool's.\nModels (~36 GB): H3 first-last-frame w6a8 16 GB, Qwen3-VL 32B encoder 15.7 GB, video VAE, 8-step turbo LoRA.\nLicence: MiniMax H3 Community Licence Agreement."
+        "Pixel sprite + action description -> animated sprite sheet, with MiniMax H3\n\nRecipe of the h3-match session (15 Nov 2026), about 55 s a clip, peak VRAM 21.4 GB.\n1. Load your sprite (blue): native pixel art on a transparent or plain background (an upscaled copy is fine: its\n   grid is detected). Output art pixels, size and palette stay exactly the sprite's.\n2. Describe the action (green). The prompt is the ACTION text alone (switch \"Use character and pose in the prompt\" off):\n   the sprite is the model's first frame, so it does not need to be told what the character looks like. Structured\n   layouts (character, pose and action in one prompt) made walks stop after one or two steps.\n   Write the action as BEATS, two or three plain sentences, 30 to 50 words, imperative: wind-up, strike, impact, settle\n   (\"Raise the hammer overhead with a quick, forceful arc, then slam the head down into the ground with heavy momentum.\n   Pause momentarily for impact weight, then heave the hammer back up and settle it onto the shoulder to reset.\").\n   PixelLab's prompt fixer writes text like this from a short ask; it is not part of this workflow (a later PR can add\n   one with ComfyUI's TextGenerate), so write the beats or let the app do it.\n   The LAST sentence matters: \"return to the initial stance\" makes a walk stop after one or two steps. For a walk or an\n   idle end on something that keeps the motion going. The \"Action (written as beats)\" input fits attacks as written; for loops write the repeating motion.\n3. Prepare: the WHOLE canvas enlarged x4 (nearest neighbour), on the neutral grey or white farthest from the sprite's\n   colours. Not a crop of the sprite plus padding, and never a magenta or green key (both bled into the body); x2 was\n   mushy. Larger canvases also work (a walk was clean at x10, 960x1120, 535 s) but cost minutes; keep the canvas under\n   about 1.1 megapixels (1440x1248 peaked at 23.9 GB). Sprites above 96 px were not tried.\n4. The sprite is the first frame AND the last frame (a loop: walk, idle), like the Wan and LTX workflows. For a one-shot\n   action (attack, cast, smash) disconnect \"last_frame\" on the yellow \"Loop\" node, as the app does.\n5. 39 video frames at 24 fps (the length snaps to 17k+5: 22 is too short for a strike and a return), 8 turbo steps,\n   res_multistep, no CFG. 20 steps bought nothing. Seed in \"Noise\". \"Frames to keep\" takes 13 frames across the clip,\n   the first being the input sprite.\n6. Clean up (yellow): a 4 x 4 block vote, every key-coloured block transparent, each pixel snapped to the sprite's\n   palette; a pixel far from every sprite colour is an effect (spark, trail, flash) and keeps one of at most 4 effect\n   colours; single-pixel noise is removed; a one-colour outline is redrawn; frame 1 is the input sprite itself.\n   Not used: the colour hold of PR 28 (it flattened an impact frame with a white slash to orange) and Hold Figure (it\n   shifts raw frames by whole video pixels, which breaks the 4 x 4 block grid).\nKnown gap: effects come out as video-style crescents and swooshes, not thin pixel lines; the model sometimes turns\ntowards the camera; some single-pixel noise remains.\nModels (~36 GB): H3 first-last-frame w6a8 16 GB, Qwen3-VL 32B encoder 15.7 GB, video VAE, 8-step turbo LoRA.\nLicence: MiniMax H3 Community Licence Agreement. Do not train on H3 output without asking the owner."
       ],
       "title": "READ ME"
     }
@@ -1768,11 +1713,11 @@
     ],
     [
       32,
-      12,
-      1,
       50,
       1,
-      "PIXEL_SPEC"
+      58,
+      0,
+      "STRING"
     ],
     [
       33,
@@ -1792,30 +1737,14 @@
     ],
     [
       35,
-      50,
-      1,
-      58,
-      0,
-      "STRING"
-    ],
-    [
-      36,
       51,
-      0,
-      52,
-      0,
-      "IMAGE"
-    ],
-    [
-      37,
-      52,
       0,
       53,
       0,
       "IMAGE"
     ],
     [
-      38,
+      36,
       53,
       1,
       54,
@@ -1823,7 +1752,7 @@
       "IMAGE"
     ],
     [
-      39,
+      37,
       54,
       0,
       55,
@@ -1831,7 +1760,7 @@
       "STRING"
     ],
     [
-      40,
+      38,
       53,
       2,
       56,
@@ -1839,7 +1768,7 @@
       "STRING"
     ],
     [
-      41,
+      39,
       51,
       1,
       57,
@@ -1847,7 +1776,7 @@
       "STRING"
     ],
     [
-      42,
+      40,
       53,
       1,
       59,
@@ -1855,7 +1784,7 @@
       "IMAGE"
     ],
     [
-      43,
+      41,
       53,
       3,
       59,

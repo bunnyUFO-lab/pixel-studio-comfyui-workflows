@@ -54,27 +54,36 @@ def source(node, input_name):
 
 
 # inputs the app sets by title
-for title in ("Pixel sprite", "Character (one sentence)", "Starting pose", "Action (beats: wind-up, strike, impact, settle)",
+for title in ("Pixel sprite", "Character (one sentence)", "Starting pose", "Action (written as beats)",
               "Use character and pose in the prompt", "Frames to keep (across the whole clip)", "Noise (seed here)",
-              "Loop (first = last frame) / video frames", "Prepare sprite (integer upscale)", "Hold figure (height, ground line, centre)",
+              "Loop (first = last frame) / video frames", "Prepare sprite (integer upscale)", "Clean up (block vote, palette, effect colours)",
               "Save sprite sheet"):
     check(title in by_title, f"input by title: {title}")
 check(by_title["Noise (seed here)"]["widgets_values"][0] == 6305, "seed is the first widget of the noise node")
 h3 = by_title["Loop (first = last frame) / video frames"]
-check(h3["widgets_values"][3] == 124 and (h3["widgets_values"][3] - 5) % 17 == 0, "video length 124 sits on the 17k+5 grid")
 check(source(h3, "first_frame")["type"] == "PrepareSpriteForVideo" and source(h3, "last_frame") is source(h3, "first_frame"),
       "the sprite is the first and the last frame (a loop); the app unlinks last_frame for a one-shot, as it does for Wan")
 check(source(h3, "prompt")["type"] == "ComfySwitchNode", "the prompt comes from the character/pose switch")
 check(by_title["Use character and pose in the prompt"]["widgets_values"][0] is False, "the tested form (action alone) is the default")
 
-# the finishing chain: decode -> hold figure -> repixelate -> pick frames -> sheet
-hold = by_title["Hold figure (height, ground line, centre)"]
-repix = by_title["Repixelate (same grid + palette)"]
-check(source(hold, "frames")["type"] == "VAEDecode" and hold["widgets_values"][0] is True, "hold figure is on, straight after the decode")
-check(source(repix, "frames") is hold, "re-pixelate works on the held frames")
-check(source(by_title["Frames to keep (across the whole clip)"], "frames") is repix, "frames are picked after re-pixelate")
-check(source(by_title["Save sprite sheet"], "frames")["type"] == "PickEvenFrames", "the sheet is made from the picked frames")
-check(repix["widgets_values"][9] is False, "the colour hold is off (it flattened a slash-effect frame on H3)")
+# the recipe of the h3-match session
+prep = by_title["Prepare sprite (integer upscale)"]
+check(prep["widgets_values"][4:] == ["whole canvas", 4], "preparation: the whole canvas enlarged x4, not a crop plus padding")
+check(h3["widgets_values"][3] == 39 and (h3["widgets_values"][3] - 5) % 17 == 0, "39 video frames, on the 17k+5 grid")
+sched = next(n for n in wf["nodes"] if n["type"] == "BasicScheduler")
+check(sched["widgets_values"][:2] == ["simple", 8], "8 steps, simple schedule")
+check(next(n for n in wf["nodes"] if n["type"] == "KSamplerSelect")["widgets_values"][0] == "res_multistep", "res_multistep")
+check(any(n["type"] == "BasicGuider" for n in wf["nodes"]) and not any(n["type"] in ("CFGGuider", "KSampler") for n in wf["nodes"]), "no CFG")
+check(next(n for n in wf["nodes"] if n["type"] == "LoraLoaderModelOnly")["widgets_values"][1] == 1.0, "turbo LoRA at 1.0")
+
+# the finishing chain: decode -> pick 13 -> clean up -> sheet. No colour hold, no hold figure, no re-pixelate.
+pick = by_title["Frames to keep (across the whole clip)"]
+clean = by_title["Clean up (block vote, palette, effect colours)"]
+check(source(pick, "frames")["type"] == "VAEDecode" and pick["widgets_values"] == [13, False], "13 frames are picked from the decoded video, the first being the input sprite")
+check(source(clean, "frames") is pick and source(clean, "pixel_spec") is by_title["Prepare sprite (integer upscale)"], "the clean-up works on the picked frames and the preparation's spec")
+check(clean["widgets_values"] == [60.0, 4, 40.0, True, True, True], "clean-up defaults: tolerance 60, 4 effect colours, threshold 40, despeckle, outline, frame 1 = sprite")
+check(source(by_title["Save sprite sheet"], "frames") is clean, "the sheet is made from the cleaned frames")
+check(not any(n["type"] in ("HoldFigure", "RepixelateFrames") for n in wf["nodes"]), "the colour hold (a RepixelateFrames option) and Hold Figure are not used")
 
 # models: each loader names a file with a URL, and the names match the widget values
 need = {"UNETLoader": "diffusion_models", "CLIPLoader": "text_encoders", "VAELoader": "vae", "LoraLoaderModelOnly": "loras"}

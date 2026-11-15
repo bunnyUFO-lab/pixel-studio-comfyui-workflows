@@ -4,16 +4,20 @@ Edit the constants below and re-run:  python tools/build_pixel_sprite_h3.py
 
 Pixel sprite + a description of the action -> animated sprite sheet at the sprite's own scale and palette, with
 MiniMax H3 (first-and-last-frame model, 8-step turbo LoRA) as the video model. Same shape as sprite-from-prompt (Wan)
-and sprite-from-prompt-ltx25: PrepareSpriteForVideo upscales the sprite by an integer factor onto a flat background,
-the video model animates it, HoldFigure keeps the figure at one height / ground line / centre, RepixelateFrames brings
-every frame back onto exactly the sprite's grid and palette, PickEvenFrames keeps N frames across the clip and
-SaveSpriteSheet writes the sheet, the Aseprite JSON and an animated WebP.
-
-H3 is wired like ComfyUI's own template "Image to Video (MiniMax H3)" (video_minimax_h3_i2v), flattened: the sprite is
-the first frame, the audio branch is dropped, 8 turbo steps with res_multistep, BasicGuider (no CFG).
+and sprite-from-prompt-ltx25 (same inputs by title), with the recipe the h3-match session landed on 15 Nov 2026
+(research/sprint2/h3match, card "h3-match-pixellab"; hand-over h3match-recipe.md):
+- Prepare: the WHOLE sprite canvas enlarged x4 (96 -> 384) with nearest neighbour, on the neutral grey or white farthest
+  from every sprite colour (never a magenta or green key: both bled into the body; x2 was mushy).
+- H3: 39 video frames (17k+5 grid; 22 is too short for a strike and a return), 8 turbo steps, res_multistep, no CFG,
+  the action caption alone as the prompt; the last frame = the first for loops (walk, idle).
+- PickEvenFrames keeps 13 frames at round(i * 38 / 12), the first being the input sprite.
+- CleanVideoFrames (a port of h3match/_tools/clean.py, pixel-identical on its test clip): 4 x 4 block vote, key-coloured
+  blocks transparent, snap to the sprite's palette with up to four effect colours, despeckle, outline.
+About 55 s a clip, peak 21.4 GB. The colour hold of PR 28 is not used: it flattened an impact frame to orange. HoldFigure
+is not used either: it shifts and scales raw frames by whole video pixels, which breaks the 4 x 4 block grid the clean-up
+votes on.
 Licence: MiniMax H3 Community Licence Agreement ("license: other" on the model card).
 """
-from build_pixel_sprite_fast import hold_figure_node
 from comfy_workflow import BLUE, GREEN, WORKFLOWS, YELLOW, Graph, inp, out
 
 OUT = WORKFLOWS / "pixel-art" / "sprite-from-prompt-h3.json"
@@ -38,47 +42,52 @@ ACTION = ("Raise the hammer overhead with a quick, forceful arc, then slam the h
           "shoulder to reset.")
 USE_CHARACTER = False        # False = the action text alone (the form that was tested); True = character, pose, action
 
-# canvas (longest side, whole art pixels), room around the sprite for motion, video frames, sheet frames
-TARGET_SIZE, PADDING = 1024, 0.5
-LENGTH = 124                 # video frames at 24 fps, on the model's 17k+5 grid (124 = ~5 s, the shortest trained)
-FRAMES = 12                  # sprite frames kept across the clip
-FPS = 12                     # playback of the kept frames (12 frames of a 5 s action: the hosted clips play at 12)
+# whole canvas enlarged by FACTOR (target_size is only used when FACTOR is 0), video frames, sprite frames kept
+FACTOR, TARGET_SIZE, PADDING = 4, 384, 0.0
+LENGTH = 39                  # video frames at 24 fps on the model's 17k+5 grid (5, 22, 39, ...): 22 is too short
+FRAMES = 13                  # sprite frames kept, the first being the input sprite: round(i * 38 / 12)
+FPS = 12                     # playback of the kept frames
 STEPS = 8
 SEED = 6305
-HOLD_STRENGTH = 0.7
 
-# height_match, bg_tolerance, method, colors (0 = sprite palette), palette, stability, deflicker, cleanup, outline,
-# hold_colors. hold_colors is OFF: on H3 attacks it turned an impact frame with a white slash effect flat orange.
-REPIX = [False, 18.0, "dominant", 0, "sprite", 0.7, True, True, "none", False]
+# bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite (the clean-up's defaults)
+CLEAN = [60.0, 4, 40.0, True, True, True]
 # frames, filename_prefix, frame_step, max_frames, loop_trim, columns, spacing, trim, fps, tag, preview_scale
 SHEET = ["pixel/sprite_from_prompt_h3", 1, 0, False, 0, 0, True, FPS, "action", 4]
 
 NOTE = f"""Pixel sprite + action description -> animated sprite sheet, with MiniMax H3
 
+Recipe of the h3-match session (15 Nov 2026), about 55 s a clip, peak VRAM 21.4 GB.
 1. Load your sprite (blue): native pixel art on a transparent or plain background (an upscaled copy is fine: its
    grid is detected). Output art pixels, size and palette stay exactly the sprite's.
-2. Describe the action (green), the way the owner's recipe does:
-   - Character: one sentence saying what it is ("a stocky dwarf blacksmith with a braided red beard...").
-   - Starting pose: "standing upright facing right with the hammer resting on his shoulder".
-   - Action: two or three plain sentences written as BEATS: wind-up, strike, impact, settle. PixelLab's prompt fixer
-     rewrites an ask like this; it is not available here, so write the beats yourself or let the app do it.
-   The form that was tested is the ACTION text alone (switch "Use character and pose in the prompt" off): the model
-   sees the sprite as its first frame, so it does not need to be told what the character looks like. Switch it on to
-   put character, pose and action in one prompt (not tested).
-3. The sprite is the first frame AND the last frame (a loop: idle, walk), like the Wan and LTX workflows. For a one-shot
-   action (attack, cast, smash) disconnect "last_frame" on the yellow "Loop" node, as the app does. The action clips
-   that were tested ran with the first frame only; a walk was tested both ways.
-4. Video frames {LENGTH} at 24 fps (~5 s, the shortest the model was trained on; the length snaps to 17k+5). Frames kept
-   = how many sprite frames to keep, spread across the whole clip. 8 turbo steps, no CFG. Seed in "Noise".
-5. Canvas size matters. target_size {TARGET_SIZE} gives about 960x1120 for a 52x59 sprite: colours and the figure stay clean
-   (a 480x640 canvas gave colour speckle and a hammer floating off the shoulder on a walk). Peak VRAM 21.4 GB of 24
-   at 960x1120, 535 s; 1440x1248 peaked at 23.9 GB: keep the canvas under about 1.1 megapixels.
-6. Hold figure (yellow, on) puts the figure at the clip's median height, ground line and centre on the raw frames.
-   Re-pixelate then snaps every frame to the sprite's grid and palette. The colour hold is off here (hold_colors): it
-   flattened an impact frame with a white slash effect. Turn it on if the clip's colours drift paler.
-Good for action clips (attack, cast, smash). Walks work only on a big canvas and run livelier than the hosted tool's.
+2. Describe the action (green). The prompt is the ACTION text alone (switch "Use character and pose in the prompt" off):
+   the sprite is the model's first frame, so it does not need to be told what the character looks like. Structured
+   layouts (character, pose and action in one prompt) made walks stop after one or two steps.
+   Write the action as BEATS, two or three plain sentences, 30 to 50 words, imperative: wind-up, strike, impact, settle
+   ("Raise the hammer overhead with a quick, forceful arc, then slam the head down into the ground with heavy momentum.
+   Pause momentarily for impact weight, then heave the hammer back up and settle it onto the shoulder to reset.").
+   PixelLab's prompt fixer writes text like this from a short ask; it is not part of this workflow (a later PR can add
+   one with ComfyUI's TextGenerate), so write the beats or let the app do it.
+   The LAST sentence matters: "return to the initial stance" makes a walk stop after one or two steps. For a walk or an
+   idle end on something that keeps the motion going. The "Action (written as beats)" input fits attacks as written; for loops write the repeating motion.
+3. Prepare: the WHOLE canvas enlarged x{FACTOR} (nearest neighbour), on the neutral grey or white farthest from the sprite's
+   colours. Not a crop of the sprite plus padding, and never a magenta or green key (both bled into the body); x2 was
+   mushy. Larger canvases also work (a walk was clean at x10, 960x1120, 535 s) but cost minutes; keep the canvas under
+   about 1.1 megapixels (1440x1248 peaked at 23.9 GB). Sprites above 96 px were not tried.
+4. The sprite is the first frame AND the last frame (a loop: walk, idle), like the Wan and LTX workflows. For a one-shot
+   action (attack, cast, smash) disconnect "last_frame" on the yellow "Loop" node, as the app does.
+5. {LENGTH} video frames at 24 fps (the length snaps to 17k+5: 22 is too short for a strike and a return), 8 turbo steps,
+   res_multistep, no CFG. 20 steps bought nothing. Seed in "Noise". "Frames to keep" takes {FRAMES} frames across the clip,
+   the first being the input sprite.
+6. Clean up (yellow): a 4 x 4 block vote, every key-coloured block transparent, each pixel snapped to the sprite's
+   palette; a pixel far from every sprite colour is an effect (spark, trail, flash) and keeps one of at most 4 effect
+   colours; single-pixel noise is removed; a one-colour outline is redrawn; frame 1 is the input sprite itself.
+   Not used: the colour hold of PR 28 (it flattened an impact frame with a white slash to orange) and Hold Figure (it
+   shifts raw frames by whole video pixels, which breaks the 4 x 4 block grid).
+Known gap: effects come out as video-style crescents and swooshes, not thin pixel lines; the model sometimes turns
+towards the camera; some single-pixel noise remains.
 Models (~36 GB): H3 first-last-frame w6a8 16 GB, Qwen3-VL 32B encoder 15.7 GB, video VAE, 8-step turbo LoRA.
-Licence: MiniMax H3 Community Licence Agreement."""
+Licence: MiniMax H3 Community Licence Agreement. Do not train on H3 output without asking the owner."""
 
 g = Graph()
 node, link = g.node, g.link
@@ -106,7 +115,7 @@ node(11, "JoinImageWithAlpha", [460, 440], [340, 46], inputs=[inp("image", "IMAG
 node(12, "PrepareSpriteForVideo", [460, 530], [340, 160], inputs=[inp("sprite", "IMAGE")],
      outputs=[out("image", "IMAGE"), out("pixel_spec", "PIXEL_SPEC"), out("width", "INT"), out("height", "INT"),
               out("info", "STRING")],
-     widgets=[TARGET_SIZE, PADDING, "auto", 32], title="Prepare sprite (integer upscale)", color=YELLOW)
+     widgets=[TARGET_SIZE, PADDING, "auto", 32, "whole canvas", FACTOR], title="Prepare sprite (integer upscale)", color=YELLOW)
 node(13, "PreviewAny", [460, 730], [340, 120], inputs=[inp("source", "*")], title="Sprite info")
 
 # The action, in the recipe's three parts
@@ -115,7 +124,7 @@ node(20, "PrimitiveStringMultiline", [840, 0], [420, 110], outputs=[out("STRING"
 node(21, "PrimitiveStringMultiline", [840, 150], [420, 90], outputs=[out("STRING", "STRING")], widgets=[POSE],
      title="Starting pose", color=GREEN)
 node(22, "PrimitiveStringMultiline", [840, 280], [420, 170], outputs=[out("STRING", "STRING")], widgets=[ACTION],
-     title="Action (beats: wind-up, strike, impact, settle)", color=GREEN)
+     title="Action (written as beats)", color=GREEN)
 node(23, "StringConcatenate", [840, 490], [420, 130],
      inputs=[inp("string_a", "STRING", "string_a"), inp("string_b", "STRING", "string_b")],
      outputs=[out("STRING", "STRING")], widgets=["", "", ", "], title="Character, pose")
@@ -155,23 +164,22 @@ node(46, "VHS_VideoCombine", [1300, 1010], [320, 420],
               "videopreview": {"hidden": False, "paused": False, "params": {}}},
      title="Raw video (motion check)", props={"Node name for S&R": "VHS_VideoCombine", "cnr_id": "comfyui-videohelpersuite"})
 
-# Back to pixel art
-hold_figure_node(g, 50, [1680, 0], 45, 12, True, HOLD_STRENGTH)
-node(51, "RepixelateFrames", [1680, 150], [340, 250], inputs=[inp("frames", "IMAGE"), inp("pixel_spec", "PIXEL_SPEC")],
-     outputs=[out("pixel_frames", "IMAGE"), out("info", "STRING"), out("palette", "STRING")], widgets=REPIX,
-     title="Repixelate (same grid + palette)", color=YELLOW)
-node(52, "PickEvenFrames", [1680, 440], [340, 106], inputs=[inp("frames", "IMAGE")],
-     outputs=[out("frames", "IMAGE"), out("info", "STRING")], widgets=[FRAMES, True],
+# Back to pixel art: pick the frames, then clean them up (the first picked frame is the input sprite)
+node(50, "PickEvenFrames", [1680, 0], [340, 106], inputs=[inp("frames", "IMAGE")],
+     outputs=[out("frames", "IMAGE"), out("info", "STRING")], widgets=[FRAMES, False],
      title="Frames to keep (across the whole clip)", color=GREEN)
-node(53, "SaveSpriteSheet", [1680, 590], [340, 330], inputs=[inp("frames", "IMAGE")],
+node(51, "CleanVideoFrames", [1680, 150], [340, 250], inputs=[inp("frames", "IMAGE"), inp("pixel_spec", "PIXEL_SPEC")],
+     outputs=[out("pixel_frames", "IMAGE"), out("info", "STRING"), out("palette", "STRING")], widgets=CLEAN,
+     title="Clean up (block vote, palette, effect colours)", color=YELLOW)
+node(53, "SaveSpriteSheet", [1680, 440], [340, 330], inputs=[inp("frames", "IMAGE")],
      outputs=[out("sheet", "IMAGE"), out("frames", "IMAGE"), out("info", "STRING"), out("fps", "INT")], widgets=SHEET,
      title="Save sprite sheet", color=GREEN)
 node(54, "PixelArtCheck", [2060, 0], [340, 106], inputs=[inp("images", "IMAGE")],
      outputs=[out("report", "STRING"), out("passed", "BOOLEAN")], widgets=[256, 0, False], title="Pixel Art Check")
 node(55, "PreviewAny", [2060, 150], [340, 200], inputs=[inp("source", "*")], title="Check report")
 node(56, "PreviewAny", [2060, 390], [340, 160], inputs=[inp("source", "*")], title="Sheet info")
-node(57, "PreviewAny", [2060, 600], [340, 160], inputs=[inp("source", "*")], title="Re-pixelate info (colours, popping)")
-node(58, "PreviewAny", [2060, 800], [340, 160], inputs=[inp("source", "*")], title="Hold figure info")
+node(57, "PreviewAny", [2060, 600], [340, 160], inputs=[inp("source", "*")], title="Clean-up info (colours, popping)")
+node(58, "PreviewAny", [2060, 800], [340, 160], inputs=[inp("source", "*")], title="Frames kept")
 node(59, "SpriteAnimationPreview", [2440, 0], [520, 680], inputs=[inp("frames", "IMAGE"), inp("fps", "INT", "fps")],
      widgets=[8, 6, "checker", "loop"], title="Animation preview (playback)", color=GREEN)
 node(60, "Note", [0, 520], [420, 800], widgets=[NOTE], title="READ ME", props={})
@@ -207,12 +215,10 @@ link(44, 0, 45, 0)
 link(3, 0, 45, 1)
 link(45, 0, 46, 0)
 link(45, 0, 50, 0)
-link(12, 1, 50, 1)
+link(50, 1, 58, 0)
 link(50, 0, 51, 0)
 link(12, 1, 51, 1)
-link(50, 1, 58, 0)
-link(51, 0, 52, 0)
-link(52, 0, 53, 0)
+link(51, 0, 53, 0)
 link(53, 1, 54, 0)
 link(54, 0, 55, 0)
 link(53, 2, 56, 0)

@@ -1032,6 +1032,17 @@ def pick_background(palette):
     return cands[int(d.argmax())]
 
 
+NEUTRALS = np.array([[255, 255, 255], [224, 224, 224], [200, 200, 200], [160, 160, 160], [128, 128, 128]], np.uint8)
+
+
+def pick_neutral_background(palette):
+    """The neutral grey or white farthest (sum of channel differences) from every colour of the sprite. A magenta or
+    green key bleeds into the body of an H3 clip; a neutral does not."""
+    pal = np.asarray(palette, np.int32).reshape(-1, 3)
+    d = np.abs(pal[None] - NEUTRALS[:, None].astype(np.int32)).sum(-1).min(1)
+    return NEUTRALS[int(d.argmax())]
+
+
 def recover_native(rgba, tolerance=12.0):
     """Upscaled pixel art (nearest) -> native image, exactly. Native art is returned unchanged."""
     s, ox, oy, _ = detect_scale(rgba)
@@ -1057,6 +1068,8 @@ class PrepareSpriteForVideo:
             "bg_color": ("STRING", {"default": "auto", "tooltip": "auto = a flat colour far from the sprite palette, or a hex colour."}),
         }, "optional": {
             "multiple": ("INT", {"default": 16, "min": 8, "max": 64, "step": 8, "tooltip": "Width and height are made divisible by this (16 for Wan; 32 for SCAIL 2). The canvas grows by whole art pixels."}),
+            "canvas": (["crop + padding", "whole canvas"], {"tooltip": "crop + padding = the sprite cut out and padded by 'padding' (Wan, LTX). whole canvas = the sprite's whole canvas enlarged as it is (MiniMax H3): nothing is cropped, 'padding' is ignored, and a plain 'auto' background is the neutral grey or white farthest from the sprite's colours (never a magenta or green key: they bleed into the body)."}),
+            "factor": ("INT", {"default": 0, "min": 0, "max": 16, "tooltip": "Exact whole-number enlargement. 0 = chosen from target_size."}),
         }}
 
     RETURN_TYPES = ("IMAGE", "PIXEL_SPEC", "INT", "INT", "STRING")
@@ -1065,34 +1078,54 @@ class PrepareSpriteForVideo:
     CATEGORY = "comfyui_workflows/pixel"
     DESCRIPTION = "Upscale a pixel sprite by an integer factor onto a flat background for a video model, and remember the grid."
 
-    def run(self, sprite, target_size, padding, bg_color, multiple=16):
+    def run(self, sprite, target_size, padding, bg_color, multiple=16, canvas="crop + padding", factor=0):
         native, detected = recover_native(to_rgba_np(sprite)[0])
         src_h, src_w = native.shape[:2]
         x0, y0, x1, y1 = subject_bbox(native[..., 3] > 0)
-        native = native[y0:y1, x0:x1]
-        h, w = native.shape[:2]
-        palette, counts = np.unique(native[native[..., 3] > 0][:, :3], axis=0, return_counts=True)
-        pad_x, pad_y = int(math.ceil(w * padding)), int(math.ceil(h * padding))
-        cw, ch = w + 2 * pad_x, h + 2 * pad_y
-        f = max(1, round(target_size / max(cw, ch)))
-        while (cw * f) % multiple:
+        whole = canvas == "whole canvas"
+        figure = native[y0:y1, x0:x1]
+        w, h = figure.shape[1], figure.shape[0]
+        palette, counts = np.unique(figure[figure[..., 3] > 0][:, :3], axis=0, return_counts=True)
+        if whole:                                               # the whole canvas as it is, nothing cropped, no padding
+            cw, ch = src_w, src_h
+            ox, oy = x0, y0
+        else:
+            pad_x, pad_y = int(math.ceil(w * padding)), int(math.ceil(h * padding))
+            cw, ch = w + 2 * pad_x, h + 2 * pad_y
+        f = int(factor) if factor else max(1, round(target_size / max(cw, ch)))
+        while (cw * f) % multiple:                              # whole canvas: grows on the right and bottom
             cw += 1
         while (ch * f) % multiple:
             ch += 1
+        if not whole:
+            ox, oy = (cw - w) // 2, (ch - h) // 2
         bg = parse_palette(bg_color)
-        bg = bg[0] if bg is not None else pick_background(palette)
+        if bg is not None:
+            bg = bg[0]
+        elif whole:
+            bg = pick_neutral_background(palette)
+        else:
+            bg = pick_background(palette)
         canvas = np.zeros((ch, cw, 4), np.uint8)
         canvas[..., :3] = bg
         canvas[..., 3] = 255
-        ox, oy = (cw - w) // 2, (ch - h) // 2
-        m = native[..., 3] > 0
-        canvas[oy:oy + h, ox:ox + w][m] = native[m]
+        m = figure[..., 3] > 0
+        sprite_rgba = np.zeros((ch, cw, 4), np.uint8)           # the sprite alone on its canvas (transparent), for clean-up
+        if whole:
+            full = native[..., 3] > 0
+            canvas[:src_h, :src_w][full] = np.concatenate([native[full][:, :3], np.full((int(full.sum()), 1), 255, np.uint8)], -1)
+            sprite_rgba[:src_h, :src_w][full] = native[full]
+            sprite_rgba[..., 3] = np.where(sprite_rgba[..., 3] > 0, 255, 0)
+        else:
+            canvas[oy:oy + h, ox:ox + w][m] = figure[m]
+            sprite_rgba[oy:oy + h, ox:ox + w][m] = figure[m]
         big = nearest_upscale(canvas, f)
         spec = {"factor": f, "canvas": (cw, ch), "offset": (ox, oy), "size": (w, h), "palette": palette.tolist(),
                 "counts": counts.tolist(),
-                "bg": bg.tolist(), "detected_input_scale": detected,
+                "bg": bg.tolist(), "detected_input_scale": detected, "sprite": sprite_rgba,
                 "source": {"size": (int(src_w), int(src_h)), "bbox": (int(x0), int(y0), int(x1), int(y1))}}
-        info = (f"sprite {w}x{h} art px ({len(palette)} colours, input scale x{detected}) -> canvas {cw}x{ch} x{f} = "
+        info = (f"sprite {w}x{h} art px ({len(palette)} colours, input scale x{detected}) -> "
+                f"{'whole ' if whole else ''}canvas {cw}x{ch} x{f} = "
                 f"{cw * f}x{ch * f}px, background #{int(bg[0]):02x}{int(bg[1]):02x}{int(bg[2]):02x}")
         img = torch.from_numpy(big[None, ..., :3].astype(np.float32) / 255.0)
         return (img, spec, cw * f, ch * f, info)
@@ -1225,6 +1258,117 @@ def figure_swing(frames, bg=None, tolerance=60):
         if b:
             hs.append(b[3] - b[1] + 1)
     return 0.0 if not hs else 100.0 * (max(hs) / max(1, min(hs)) - 1.0)
+
+
+def _fx_weights(c):
+    """Cheap perceptual-ish channel weighting used by the video clean-up's palette snap."""
+    return np.asarray(c, np.float64) * np.array([0.8, 1.0, 0.6])
+
+
+def _collapse_blocks(fr, k, bg, tol):
+    """One k x k block of a video frame -> one art pixel. A block is background when at least half of its pixels are within
+    `tol` of the key colour; otherwise its colour is the block pixel nearest to the median of its clearly non-key pixels
+    (so the blurred seam between figure and background does not tint the edge)."""
+    H, W = fr.shape[0] // k, fr.shape[1] // k
+    blk = fr[:H * k, :W * k].astype(np.int32).reshape(H, k, W, k, 3).transpose(0, 2, 1, 3, 4).reshape(H, W, k * k, 3)
+    db = np.abs(blk - bg.astype(np.int32)).sum(-1)
+    isbg = db < tol
+    core = db > 2.5 * tol
+    use = np.where(core.any(-1, keepdims=True), core, ~isbg)
+    bm = np.where(use[..., None], blk.astype(np.float64), np.nan)
+    med = np.nanmedian(np.where(use.any(-1, keepdims=True)[..., None], bm, blk.astype(np.float64)), axis=2)
+    dist = np.abs(blk - med[:, :, None]).sum(-1) + np.where(use, 0, 1e6)
+    col = np.take_along_axis(blk, dist.argmin(-1)[:, :, None, None], 2)[:, :, 0]
+    col[isbg.mean(-1) >= 0.5] = bg.astype(np.int32)
+    return col
+
+
+def _edge4(al):
+    """Opaque pixels with at least one transparent 4-neighbour (the image border counts as transparent)."""
+    pad = np.pad(al, 1)
+    return al & (~pad[:-2, 1:-1] | ~pad[2:, 1:-1] | ~pad[1:-1, :-2] | ~pad[1:-1, 2:])
+
+
+def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, effect_threshold=40.0, despeckle=True,
+                       outline=True, first_is_sprite=True):
+    """Video frames of a sprite animation (the sprite enlarged by spec['factor'] on a flat key colour) -> sprite frames
+    on the sprite's own grid, as RGBA. Per frame, no memory of the others:
+    1. a k x k block vote (see _collapse_blocks) and every key-coloured block becomes transparent (enclosed gaps too);
+    2. every opaque pixel snaps to the nearest sprite colour; a pixel farther than an adaptive threshold from every
+       sprite colour is an EFFECT (a spark, a trail, a flash) and is kept, quantised to at most `effect_colours` new
+       colours shared by the whole clip; the threshold is the larger of `effect_threshold` and 1.5 x the 99th percentile
+       of the first frame's own error (the first frame is the sprite itself, so its error is only video noise);
+    3. despeckle: a body pixel none of whose neighbours share its colour takes the neighbours' commonest colour, and a
+       lone opaque pixel goes; 4. outline: when the sprite's silhouette edge is at least 60% one colour, body pixels on
+       the silhouette edge take it. Frame 1 is the input sprite itself when `first_is_sprite`."""
+    f = spec["factor"]
+    cw, ch = spec["canvas"]
+    bg = np.array(spec["bg"], np.uint8)
+    pal = np.array(spec["palette"], np.float64)
+    sprite = spec.get("sprite")
+    P = _fx_weights(pal)
+    outs = []
+    for fr in frames_rgb:
+        fr = np.asarray(fr)[..., :3]
+        if fr.shape[:2] != (ch * f, cw * f):
+            fr = np.asarray(Image.fromarray(fr).resize((cw * f, ch * f), Image.BILINEAR))
+        px = _collapse_blocks(fr, f, bg, bg_tolerance).astype(np.float64)
+        alpha = ~(np.abs(px - bg).sum(-1) < bg_tolerance)
+        outs.append((px, alpha))
+    D0 = np.linalg.norm(_fx_weights(outs[0][0])[:, :, None, :] - P[None, None], axis=-1).min(-1)
+    thr = max(effect_threshold, float(np.percentile(D0[outs[0][1]], 99)) * 1.5) if outs[0][1].any() else effect_threshold
+    res, fx_pixels = [], []
+    for px, alpha in outs:
+        D = np.linalg.norm(_fx_weights(px)[:, :, None, :] - P[None, None], axis=-1)
+        snapped = pal[D.argmin(-1)]
+        isfx = (D.min(-1) > thr) & alpha if effect_colours > 0 else np.zeros_like(alpha)
+        res.append((snapped, alpha, isfx, px))
+        fx_pixels.append(px[isfx])
+    fxall = np.concatenate(fx_pixels) if fx_pixels else np.zeros((0, 3))
+    cent = None
+    if len(fxall) and effect_colours > 0:
+        rng = np.random.default_rng(0)
+        cent = fxall[rng.choice(len(fxall), min(effect_colours, len(fxall)), replace=False)]
+        for _ in range(15):
+            lbl = np.linalg.norm(fxall[:, None] - cent[None], axis=-1).argmin(1)
+            cent = np.array([fxall[lbl == c].mean(0) if (lbl == c).any() else cent[c] for c in range(len(cent))])
+    outline_colour = None
+    if outline and sprite is not None:
+        sa = sprite[..., 3] > 0
+        ec, en = np.unique(sprite[_edge4(sa)][:, :3], axis=0, return_counts=True)
+        if len(en) and en.max() / en.sum() >= 0.6:
+            outline_colour = ec[en.argmax()]
+    out = []
+    for j, (snapped, alpha, isfx, px) in enumerate(res):
+        o = snapped.copy()
+        if isfx.any() and cent is not None:
+            o[isfx] = cent[np.linalg.norm(px[isfx][:, None] - cent[None], axis=-1).argmin(1)]
+        o = o.clip(0, 255).astype(np.uint8)
+        al = alpha.copy()
+        H_, W_ = al.shape
+        if despeckle:
+            oo = o.copy()
+            for y in range(1, H_ - 1):
+                for x in range(1, W_ - 1):
+                    if not al[y, x] or isfx[y, x]:
+                        continue
+                    nb = [(yy, xx) for yy in (y - 1, y, y + 1) for xx in (x - 1, x, x + 1) if (yy, xx) != (y, x) and al[yy, xx]]
+                    if len(nb) < 5:
+                        continue
+                    cols = [tuple(o[q]) for q in nb]
+                    if tuple(o[y, x]) not in cols:
+                        oo[y, x] = max(set(cols), key=cols.count)
+            o = oo
+            for y in range(1, H_ - 1):
+                for x in range(1, W_ - 1):
+                    if al[y, x] and not (al[y - 1, x] or al[y + 1, x] or al[y, x - 1] or al[y, x + 1]):
+                        al[y, x] = False
+        if outline_colour is not None:
+            o[_edge4(al) & ~isfx] = outline_colour
+        rgba = np.dstack([o, (al * 255).astype(np.uint8)])
+        rgba[~al, :3] = 0
+        out.append(sprite.copy() if (j == 0 and first_is_sprite and sprite is not None) else rgba)
+    return out
 
 
 def repixelate(frames_rgb, spec, height_match=False, bg_tolerance=18.0, method="dominant", colors=0,
@@ -1393,12 +1537,43 @@ class PickEvenFrames:
         skip_first; fewer frames than asked for are all kept."""
         if n <= count:
             return list(range(n))
-        pts = [int(round(v)) for v in np.linspace(0, n - 1, count + (1 if skip_first else 0))]
+        m = count if skip_first else count - 1                 # steps between the first and the last frame
+        pts = [int(round(i * (n - 1) / m)) for i in range(m + 1)] if m else [0]
         return pts[1:] if skip_first else pts
 
     def run(self, frames, count, skip_first):
         idx = self.indices(int(frames.shape[0]), count, skip_first)
         return (frames[idx], f"{len(idx)} of {int(frames.shape[0])} frames: {idx}")
+
+
+class CleanVideoFrames:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "frames": ("IMAGE",),
+            "pixel_spec": ("PIXEL_SPEC",),
+            "bg_tolerance": ("FLOAT", {"default": 60.0, "min": 10.0, "max": 200.0, "step": 5.0, "tooltip": "How far (sum of channel differences) a block pixel may be from the key colour and still count as background."}),
+            "effect_colours": ("INT", {"default": 4, "min": 0, "max": 16, "tooltip": "A pixel far from every sprite colour is an effect (spark, trail, flash) and keeps a colour of its own, at most this many new colours for the whole clip. 0 = everything snaps to the sprite's palette."}),
+            "effect_threshold": ("FLOAT", {"default": 40.0, "min": 5.0, "max": 200.0, "step": 5.0, "tooltip": "How far from every sprite colour a pixel must be to count as an effect (never below 1.5 x the first frame's own video noise)."}),
+            "despeckle": ("BOOLEAN", {"default": True, "tooltip": "Remove single-pixel noise: a body pixel that shares its colour with none of its neighbours takes theirs; lone pixels go."}),
+            "outline": ("BOOLEAN", {"default": True, "tooltip": "When the sprite has a one-colour outline, redraw it on every frame's silhouette."}),
+            "first_is_sprite": ("BOOLEAN", {"default": True, "tooltip": "Frame 1 is the input sprite itself (the video's first frame is the sprite). Turn off when the first frame given is not video frame 0."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("pixel_frames", "info", "palette")
+    FUNCTION = "run"
+    CATEGORY = "comfyui_workflows/pixel"
+    DESCRIPTION = "Video frames of a sprite animation back to the sprite's grid: block vote, background cut, palette snap with effect colours, despeckle, outline. For MiniMax H3."
+
+    def run(self, frames, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite):
+        fr = [f[..., :3] for f in to_rgba_np(frames)]
+        out = clean_video_frames(fr, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite)
+        counts = [len(np.unique(o[o[..., 3] > 0][:, :3], axis=0)) if (o[..., 3] > 0).any() else 0 for o in out]
+        cw, ch = pixel_spec["canvas"]
+        info = (f"{len(out)} frames -> {cw}x{ch} art px, sprite palette {len(pixel_spec['palette'])} colours, "
+                f"colours per frame {min(counts)} to {max(counts)}, colour popping {flicker_rate(out):.2f}% of pixels per frame")
+        return (to_image_tensor(out), info, palette_to_text(np.array(pixel_spec["palette"], np.uint8)))
 
 
 class RepixelateFrames:
