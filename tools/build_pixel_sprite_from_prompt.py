@@ -8,6 +8,7 @@ frame, so the animation loops) animates it with the pixel-art animation LoRA, th
 frame back onto exactly the same grid with the sprite's exact palette and SaveSpriteSheet writes the sheet,
 Aseprite JSON and an animated WebP.
 """
+from build_pixel_sprite_fast import hold_figure_node
 from comfy_workflow import (BLUE, GREEN, HIGH, LOW, NEGATIVE, PIXEL_ANIM_LORA, PIXEL_ANIM_LORA_URL, RED,
                             TEXT_ENCODER, URLS, VAE, WORKFLOWS, YELLOW, Graph, inp, out)
 
@@ -39,6 +40,9 @@ NOTE = f"""Pixel sprite + prompt -> animated sprite sheet
    "Pixel-animate LoRA" (HIGH + LOW) is trained on pixel-art sprite animations; Ctrl+B both to compare without.
 Colours: Re-pixelate 'colors' merges the sprite palette down to N of its own colours (fewer = steadier),
    'palette' swaps in a preset/hex list; 'stability' + 'deflicker' stop colours popping between frames.
+   "Hold figure" (yellow, on): puts the figure at the clip's median height, ground line and centre on the raw
+   video frames, before the pixel step, so it does not grow or drift across the canvas. Switch "enabled" off to
+   keep the video's own motion in space (a jump, a lunge across the canvas); strength 0.7 corrects part of the size.
 5. Sprite sheet: frame_step {SHEET[1]} keeps every 2nd frame; loop_trim drops repeated end frames; fps for the WebP/JSON.
 The "Animation preview" node plays the sheet frames at the sheet's fps (zoom, background, ping-pong).
 Saved to output/pixel/: sprite_from_prompt_*.png (sheet), .json (Aseprite), .webp (animated), _preview.png.
@@ -173,7 +177,10 @@ link(15, 0, 16, 3)
 link(16, 0, 17, 0)
 link(8, 0, 17, 1)
 link(17, 0, 18, 0)
-link(17, 0, 19, 0)
+hold_figure_node(g, 28, [1680, 1100], 17, 10)
+link(17, 0, 28, 0)           # decoded video -> hold the figure -> re-pixelate
+link(10, 1, 28, 1)
+link(28, 0, 19, 0)
 link(10, 1, 19, 1)
 link(19, 0, 20, 0)
 link(20, 1, 21, 0)

@@ -1170,6 +1170,63 @@ def hold_first_colours(frames, bg, tolerance=30.0, min_share=0.01):
     return out
 
 
+def _figure_box(fr, bg, tol):
+    """Bounding box (x0, y0, x1, y1) of the pixels that are not the flat background, or None."""
+    m = np.abs(fr[..., :3].astype(np.int32) - np.asarray(bg, np.int32)).sum(-1) > tol
+    ys, xs = np.where(m)
+    if not len(ys):
+        return None
+    return int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+
+
+def hold_figure(frames, bg=None, strength=0.7, tolerance=60, min_scale=0.6, max_scale=1.6):
+    """Hold a clip's figure at one height, one ground line and one horizontal centre, on the raw video frames.
+    Video models walk a figure toward the camera and grow it, or let it drift sideways; prompts do not stop it. This
+    measures the figure in every frame (the pixels away from the flat background; `bg` or, left out, the colour of the
+    frame's own border) and puts it back where the clip's medians are: same height, same bottom edge, same centre.
+    It never invents a pixel: area a shift or a shrink uncovers gets the background colour, which the re-pixelate step
+    keys out like any other background. It runs BEFORE re-pixelate, on full-size frames, so no pixel grid is harmed.
+    The size correction is partial on purpose: a crouch really is shorter than a lunge. Each frame's scale is pulled
+    `strength` (0..1) of the way to the clip's median height, then clamped to min_scale..max_scale; shifts are exact.
+    A frame with no figure is left as it is; so is a clip with fewer than two frames that have one."""
+    boxes = [_figure_box(f, bg if bg is not None else np.median(np.concatenate([f[0], f[-1], f[:, 0], f[:, -1]]), 0), tolerance)
+             for f in frames]
+    found = [b for b in boxes if b]
+    if len(found) < 2 or strength < 0 or tolerance < 0:
+        return list(frames)
+    ref_h = float(np.median([b[3] - b[1] + 1 for b in found]))
+    ref_bottom = float(np.median([b[3] for b in found]))
+    ref_cx = float(np.median([(b[0] + b[2]) / 2 for b in found]))
+    out = []
+    for fr, b in zip(frames, boxes):
+        if not b:
+            out.append(fr)
+            continue
+        edge = bg if bg is not None else np.median(np.concatenate([fr[0], fr[-1], fr[:, 0], fr[:, -1]]), 0)
+        fill = tuple(int(round(c)) for c in np.asarray(edge, np.float64)[:3])
+        h = b[3] - b[1] + 1
+        s = min(max(1.0 + strength * (ref_h / h - 1.0), min_scale), max_scale)
+        H, W = fr.shape[:2]
+        im = Image.fromarray(fr[..., :3])
+        if abs(s - 1.0) > 1e-3:
+            im = im.resize((max(1, round(W * s)), max(1, round(H * s))), Image.LANCZOS)
+        cx, bottom = (b[0] + b[2]) / 2, b[3]
+        canvas = Image.new("RGB", (W, H), fill)
+        canvas.paste(im, (round(ref_cx - cx * s), round(ref_bottom - bottom * s)))
+        out.append(np.asarray(canvas))
+    return out
+
+
+def figure_swing(frames, bg=None, tolerance=60):
+    """How far the figure's height swings over a clip, as a percentage: (tallest / shortest - 1) * 100."""
+    hs = []
+    for f in frames:
+        b = _figure_box(f, bg if bg is not None else np.median(np.concatenate([f[0], f[-1], f[:, 0], f[:, -1]]), 0), tolerance)
+        if b:
+            hs.append(b[3] - b[1] + 1)
+    return 0.0 if not hs else 100.0 * (max(hs) / max(1, min(hs)) - 1.0)
+
+
 def repixelate(frames_rgb, spec, height_match=False, bg_tolerance=18.0, method="dominant", colors=0,
                palette_text="sprite", stability=0.7, deflicker=True, cleanup=True, outline="none", hold_colors=False):
     f = spec["factor"]
@@ -1283,6 +1340,34 @@ def _scale_about(rgba, s, anchor, bg):
     if xb > xa and yb > ya:
         canvas[ya:yb, xa:xb, :3] = arr[ya - oy:yb - oy, xa - ox:xb - ox]
     return canvas
+
+
+class HoldFigure:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "frames": ("IMAGE",),
+            "enabled": ("BOOLEAN", {"default": False, "tooltip": "Off = frames pass through unchanged. On = every frame's figure is put at the clip's median height, ground line and horizontal centre."}),
+            "strength": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "How far each frame's size is pulled toward the clip's median height (1 = all the way: a crouch and a lunge get the same height). Position is always held exactly."}),
+        }, "optional": {
+            "pixel_spec": ("PIXEL_SPEC", {"tooltip": "From Prepare Pixel Sprite for Video: its flat background colour is used to find the figure. Left unconnected, each frame's own border colour is used."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("frames", "info")
+    FUNCTION = "run"
+    CATEGORY = "comfyui_workflows/pixel"
+    DESCRIPTION = "Hold a video clip's figure at one height, ground line and horizontal centre before it is re-pixelated (stops it growing or drifting)."
+
+    def run(self, frames, enabled, strength, pixel_spec=None):
+        if not enabled:
+            return (frames, "figure hold off")
+        fr = [f[..., :3] for f in to_rgba_np(frames)]
+        bg = np.array(pixel_spec["bg"], np.uint8) if pixel_spec else None
+        out = hold_figure(fr, bg, strength)
+        info = (f"{len(out)} frames: figure height swing {figure_swing(fr, bg):.0f}% -> {figure_swing(out, bg):.0f}% "
+                f"(strength {strength:.2f})")
+        return (to_image_tensor(out), info)
 
 
 class RepixelateFrames:

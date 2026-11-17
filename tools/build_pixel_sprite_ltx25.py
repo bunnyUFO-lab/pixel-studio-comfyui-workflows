@@ -42,7 +42,8 @@ NOTE = f"""Pixel sprite + motion prompt -> looping sprite sheet, with LTX-2.5 (2
    have Gemma 4 E2B write one from your short prompt and the sprite.
 3. The sprite is the first AND the last frame (guide strength {GUIDE_STRENGTH}), so the animation loops. For a one-shot
    action, bypass "Last frame = sprite".
-4. {FRAMES} frames at {FPS} fps (~3 s), 8 distilled steps, CFG 1. Re-pixelate brings every frame back onto the sprite's
+4. {FRAMES} frames at {FPS} fps (~3 s), 8 distilled steps, CFG 1. "Hold figure" (on) keeps the figure at the clip's
+   median height, ground line and centre on the raw frames; Re-pixelate then brings every frame back onto the sprite's
    grid and palette; the sheet keeps every frame.
 Models (~39 GB): LTX-2.5 distilled int8 (21.5 GB), Gemma 4 12B int8 encoder (15.4 GB), video + audio VAE, Gemma 4 E2B
 (enhancer). The LTX-2.5 repo is gated: accept the licence on Hugging Face, HF_TOKEN in .secrets.env.
@@ -184,7 +185,7 @@ def build():
     link(75, 0, 76, 2)
     link(76, 2, 77, 0)
     link(5, 0, 77, 1)
-    pixel_tail(g, 2000, (77, 0), "pixel/sprite_from_prompt_ltx25", FPS, True, "idle", hold_colors=True)
+    pixel_tail(g, 2000, (77, 0), "pixel/sprite_from_prompt_ltx25", FPS, True, "idle", hold_colors=True, hold_figure=True)
     g.save(WORKFLOWS / "pixel-art" / "sprite-from-prompt-ltx25.json", "pixel-art-sprite-from-prompt-ltx25", groups=[
         ("Models", [-20, -60, 460, 1140], "#3f789e"),
         ("Sprite + prompt", [440, -60, 840, 1240], "#a1309b"),
