@@ -1,0 +1,510 @@
+{
+  "id": "a7f7fe8e-d7f7-580d-b60e-a41aa057e7d7",
+  "revision": 0,
+  "last_node_id": 9,
+  "last_link_id": 10,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CLIPLoader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        420,
+        106
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            1,
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "ideogram4",
+        "default"
+      ],
+      "title": "Load Qwen3-VL text model"
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        150
+      ],
+      "size": [
+        340,
+        400
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3,
+            4
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Sprite (on white, enlarged x4)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 3,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        460,
+        0
+      ],
+      "size": [
+        520,
+        360
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            7,
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "You write action captions for a video model that animates one pixel-art game sprite. The first frame of the video is the sprite itself, so the caption describes only MOVEMENT, never appearance, colours, style or background.\nRules:\n- Two or three imperative sentences, 30 to 50 words in all. Start with a verb (\"Raise\", \"Lift\", \"Crouch\", \"Stride\"). Do not name the character.\n- For an attack or other one-off action, walk through the beats in order: the anticipation or wind-up, the main action with its weight, the follow-through, then the return to the starting stance.\n- Give each beat its speed: a quick raise or wind-up, a fast strike, a short hold, a quick return, so the whole action ends inside the clip.\n- Keep any effect small and tight to what makes it: a thin trail following the weapon, a few sparks where it hits, a bolt straight out from the hand no longer than the arm's reach. Never a ring, burst or crescent around the body.\n- Keep the body and face turned the same way as in the sprite throughout; pull a held object or hand back toward the chest or shoulder, never behind the body.\n- When a weapon is drawn back for a swing, pull it back over the shoulder with a slight lean, the body and face staying side-on.\n- For an attack or cast, the last beat brings the body, the weapon or the hand back to where it was in the first frame; do not end with an arm or weapon still held out.\n- Name the body parts and held objects that move, and how (arc, thrust, bob). Say what stays steady.\n- For a walk or run, describe one stride as its beats in order: the lead foot steps down with the body's bob, then the trailing leg swings through and plants. Name what stays steady. End on a step that carries on into the next one; do not end with a return to the stance or to the starting position. Never write stride forward, sway, turn or travel.\n- For an idle or other loop, describe the repeating motion and end by returning to the initial stance.\n- Drop instructions about the canvas, frames, staying in place or looping; the model does not need them.\nAnswer with the caption only."
+      ],
+      "title": "System prompt",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 4,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        460,
+        400
+      ],
+      "size": [
+        520,
+        220
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            5,
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "Subject: a stocky dwarf blacksmith with a braided red beard, a brown leather apron and a heavy steel hammer\nStarting pose: standing upright facing right with the hammer resting on his shoulder\nRequest: Overhead hammer smash.\nCaption:"
+      ],
+      "title": "User prompt",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 5,
+      "type": "TextGenerate",
+      "pos": [
+        1020,
+        0
+      ],
+      "size": [
+        420,
+        360
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 5,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        160,
+        "on",
+        0.3,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        7,
+        false,
+        true
+      ],
+      "title": "Caption writer 1 (first seed)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 6,
+      "type": "TextGenerate",
+      "pos": [
+        1020,
+        400
+      ],
+      "size": [
+        420,
+        360
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 6,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        160,
+        "on",
+        0.3,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        8,
+        false,
+        true
+      ],
+      "title": "Caption writer 2 (second seed)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 7,
+      "type": "PreviewAny",
+      "pos": [
+        1480,
+        0
+      ],
+      "size": [
+        420,
+        200
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 9
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Caption"
+    },
+    {
+      "id": 8,
+      "type": "PreviewAny",
+      "pos": [
+        1480,
+        400
+      ],
+      "size": [
+        420,
+        200
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Caption 2"
+    },
+    {
+      "id": 9,
+      "type": "Note",
+      "pos": [
+        0,
+        600
+      ],
+      "size": [
+        420,
+        380
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Prompt fixer for MiniMax H3: the caption writer\n\n1. Load the sprite prepared the way the app does it (blue): RGBA composited on opaque white, enlarged x4 with nearest\n   neighbour (96 -> 384 px), saved as an RGB PNG.\n2. System prompt (green): the rules (v6). User prompt (green): a few examples of short asks and their captions, then\n   the sprite's subject, its starting pose and the ask, ending with \"Caption:\".\n3. Two TextGenerate runs, identical except the seed (7 and 8): Qwen3-VL 8B looks at the sprite, 160 tokens,\n   temperature 0.3, top_k 64, top_p 0.95, min_p 0.05, repetition penalty 1.05. Caption = first seed, Caption 2 = second.\n4. What comes next is not in this graph: the app (or you) checks the first caption against the banned words, falls back\n   to the second, and last of all rewords the first by code. The model ignores some word bans, so the check is code.\nNo video model is loaded. About 25 to 60 s and 2 to 5 cents on the cloud worker.\nModel: Qwen3-VL 8B int8 (Apache 2.0), the one the Qwen edit workflows load."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      5,
+      0,
+      "CLIP"
+    ],
+    [
+      2,
+      1,
+      0,
+      6,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      2,
+      0,
+      5,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      2,
+      0,
+      6,
+      1,
+      "IMAGE"
+    ],
+    [
+      5,
+      4,
+      0,
+      5,
+      2,
+      "STRING"
+    ],
+    [
+      6,
+      4,
+      0,
+      6,
+      2,
+      "STRING"
+    ],
+    [
+      7,
+      3,
+      0,
+      5,
+      3,
+      "STRING"
+    ],
+    [
+      8,
+      3,
+      0,
+      6,
+      3,
+      "STRING"
+    ],
+    [
+      9,
+      5,
+      0,
+      7,
+      0,
+      "STRING"
+    ],
+    [
+      10,
+      6,
+      0,
+      8,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Model + sprite",
+      "bounding": [
+        -20,
+        -60,
+        460,
+        1100
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Prompts",
+      "bounding": [
+        440,
+        -60,
+        560,
+        700
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Write the caption twice (seeds 7 and 8)",
+      "bounding": [
+        1000,
+        -60,
+        920,
+        700
+      ],
+      "color": "#88A",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5,
+      "offset": [
+        40,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}
