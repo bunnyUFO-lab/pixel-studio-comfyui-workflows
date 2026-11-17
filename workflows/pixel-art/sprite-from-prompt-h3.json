@@ -1,0 +1,1856 @@
+{
+  "id": "2de1b96b-aac3-5669-bab9-59fd8e6df26b",
+  "revision": 0,
+  "last_node_id": 60,
+  "last_link_id": 41,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        420,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "minimax-h3/minimax_h3_fl2va_pruned_w6a8.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax-h3/minimax_h3_fl2va_pruned_w6a8.safetensors",
+        "default"
+      ],
+      "title": "Load H3 first-last-frame model"
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        0,
+        130
+      ],
+      "size": [
+        420,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "minimax-h3/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax-h3/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ],
+      "title": "Load Qwen3-VL text encoder"
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [
+        0,
+        280
+      ],
+      "size": [
+        420,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            15,
+            29
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "minimax-h3/minimax_h3_video_vae_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax-h3/minimax_h3_video_vae_int8_convrot.safetensors"
+      ],
+      "title": "Load H3 video VAE"
+    },
+    {
+      "id": 4,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        0,
+        380
+      ],
+      "size": [
+        420,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            20,
+            21
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly",
+        "models": [
+          {
+            "name": "minimax-h3/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+            "directory": "loras"
+          }
+        ]
+      },
+      "widgets_values": [
+        "minimax-h3/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        1.0
+      ],
+      "title": "Turbo 8-step LoRA"
+    },
+    {
+      "id": 10,
+      "type": "LoadImage",
+      "pos": [
+        460,
+        0
+      ],
+      "size": [
+        340,
+        400
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            3
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Pixel sprite",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 11,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        460,
+        440
+      ],
+      "size": [
+        340,
+        46
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "Keep sprite transparency"
+    },
+    {
+      "id": 12,
+      "type": "PrepareSpriteForVideo",
+      "pos": [
+        460,
+        530
+      ],
+      "size": [
+        340,
+        160
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "sprite",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            18,
+            19
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "pixel_spec",
+          "type": "PIXEL_SPEC",
+          "links": [
+            34
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            16
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            17
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            5
+          ],
+          "slot_index": 4
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrepareSpriteForVideo"
+      },
+      "widgets_values": [
+        384,
+        0.0,
+        "auto",
+        32,
+        "whole canvas",
+        4
+      ],
+      "title": "Prepare sprite (integer upscale)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 13,
+      "type": "PreviewAny",
+      "pos": [
+        460,
+        730
+      ],
+      "size": [
+        340,
+        120
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Sprite info"
+    },
+    {
+      "id": 20,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        840,
+        0
+      ],
+      "size": [
+        420,
+        110
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "a stocky dwarf blacksmith with a braided red beard, a brown leather apron and a heavy steel hammer"
+      ],
+      "title": "Character (one sentence)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 21,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        840,
+        150
+      ],
+      "size": [
+        420,
+        90
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "standing upright facing right with the hammer resting on his shoulder"
+      ],
+      "title": "Starting pose",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 22,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        840,
+        280
+      ],
+      "size": [
+        420,
+        170
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            9,
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "Raise the hammer overhead with a quick, forceful arc, then slam the head down into the ground with heavy momentum. Pause momentarily for impact weight, then heave the hammer back up and settle it onto the shoulder to reset."
+      ],
+      "title": "Action (written as beats)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 23,
+      "type": "StringConcatenate",
+      "pos": [
+        840,
+        490
+      ],
+      "size": [
+        420,
+        130
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 6,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 7,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        ", "
+      ],
+      "title": "Character, pose"
+    },
+    {
+      "id": 24,
+      "type": "StringConcatenate",
+      "pos": [
+        840,
+        660
+      ],
+      "size": [
+        420,
+        130
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 8,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 9,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        ". "
+      ],
+      "title": "Character, pose. Action"
+    },
+    {
+      "id": 25,
+      "type": "ComfySwitchNode",
+      "pos": [
+        840,
+        830
+      ],
+      "size": [
+        300,
+        82
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "on_false",
+          "type": "STRING",
+          "link": 10
+        },
+        {
+          "name": "on_true",
+          "type": "STRING",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "STRING",
+          "links": [
+            12,
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfySwitchNode"
+      },
+      "widgets_values": [
+        false
+      ],
+      "title": "Use character and pose in the prompt"
+    },
+    {
+      "id": 26,
+      "type": "PreviewAny",
+      "pos": [
+        840,
+        950
+      ],
+      "size": [
+        420,
+        160
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Prompt used"
+    },
+    {
+      "id": 30,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        1300,
+        0
+      ],
+      "size": [
+        340,
+        250
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 14
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 15
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 13,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 16,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 17,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 18
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            27
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ImageToVideo"
+      },
+      "widgets_values": [
+        "",
+        384,
+        384,
+        39
+      ],
+      "title": "Loop (first = last frame) / video frames",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 40,
+      "type": "RandomNoise",
+      "pos": [
+        1300,
+        300
+      ],
+      "size": [
+        300,
+        82
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            23
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        6305,
+        "randomize"
+      ],
+      "title": "Noise (seed here)"
+    },
+    {
+      "id": 41,
+      "type": "KSamplerSelect",
+      "pos": [
+        1300,
+        420
+      ],
+      "size": [
+        300,
+        58
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            25
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "res_multistep"
+      ]
+    },
+    {
+      "id": 42,
+      "type": "BasicScheduler",
+      "pos": [
+        1300,
+        520
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            26
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        8,
+        1.0
+      ],
+      "title": "Scheduler (8 turbo steps)"
+    },
+    {
+      "id": 43,
+      "type": "BasicGuider",
+      "pos": [
+        1300,
+        670
+      ],
+      "size": [
+        300,
+        46
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 21
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            24
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 44,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1300,
+        760
+      ],
+      "size": [
+        300,
+        120
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 23
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 24
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 25
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 26
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            28
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "title": "Sampler"
+    },
+    {
+      "id": 45,
+      "type": "VAEDecode",
+      "pos": [
+        1300,
+        920
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 28
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            30,
+            31
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Decode (video only)"
+    },
+    {
+      "id": 46,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        1300,
+        1010
+      ],
+      "size": [
+        320,
+        420
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 30
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine",
+        "cnr_id": "comfyui-videohelpersuite"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "pixel/sprite_from_prompt_h3_raw",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 17,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {}
+        }
+      },
+      "title": "Raw video (motion check)"
+    },
+    {
+      "id": 50,
+      "type": "PickEvenFrames",
+      "pos": [
+        1680,
+        0
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 31
+        }
+      ],
+      "outputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "links": [
+            33
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            32
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PickEvenFrames"
+      },
+      "widgets_values": [
+        13,
+        false
+      ],
+      "title": "Frames to keep (across the whole clip)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 51,
+      "type": "CleanVideoFrames",
+      "pos": [
+        1680,
+        150
+      ],
+      "size": [
+        340,
+        250
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 33
+        },
+        {
+          "name": "pixel_spec",
+          "type": "PIXEL_SPEC",
+          "link": 34
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixel_frames",
+          "type": "IMAGE",
+          "links": [
+            35
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            39
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CleanVideoFrames"
+      },
+      "widgets_values": [
+        60.0,
+        4,
+        40.0,
+        true,
+        true,
+        true
+      ],
+      "title": "Clean up (block vote, palette, effect colours)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 53,
+      "type": "SaveSpriteSheet",
+      "pos": [
+        1680,
+        440
+      ],
+      "size": [
+        340,
+        330
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "sheet",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "links": [
+            36,
+            40
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            38
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "fps",
+          "type": "INT",
+          "links": [
+            41
+          ],
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SaveSpriteSheet"
+      },
+      "widgets_values": [
+        "pixel/sprite_from_prompt_h3",
+        1,
+        0,
+        false,
+        0,
+        0,
+        true,
+        12,
+        "action",
+        4
+      ],
+      "title": "Save sprite sheet",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 54,
+      "type": "PixelArtCheck",
+      "pos": [
+        2060,
+        0
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 36
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            37
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "passed",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixelArtCheck"
+      },
+      "widgets_values": [
+        256,
+        0,
+        false
+      ],
+      "title": "Pixel Art Check"
+    },
+    {
+      "id": 55,
+      "type": "PreviewAny",
+      "pos": [
+        2060,
+        150
+      ],
+      "size": [
+        340,
+        200
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 37
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Check report"
+    },
+    {
+      "id": 56,
+      "type": "PreviewAny",
+      "pos": [
+        2060,
+        390
+      ],
+      "size": [
+        340,
+        160
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 38
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Sheet info"
+    },
+    {
+      "id": 57,
+      "type": "PreviewAny",
+      "pos": [
+        2060,
+        600
+      ],
+      "size": [
+        340,
+        160
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 39
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Clean-up info (colours, popping)"
+    },
+    {
+      "id": 58,
+      "type": "PreviewAny",
+      "pos": [
+        2060,
+        800
+      ],
+      "size": [
+        340,
+        160
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 32
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "title": "Frames kept"
+    },
+    {
+      "id": 59,
+      "type": "SpriteAnimationPreview",
+      "pos": [
+        2440,
+        0
+      ],
+      "size": [
+        520,
+        680
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "frames",
+          "type": "IMAGE",
+          "link": 40
+        },
+        {
+          "name": "fps",
+          "type": "INT",
+          "link": 41,
+          "widget": {
+            "name": "fps"
+          }
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SpriteAnimationPreview"
+      },
+      "widgets_values": [
+        8,
+        6,
+        "checker",
+        "loop"
+      ],
+      "title": "Animation preview (playback)",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 60,
+      "type": "Note",
+      "pos": [
+        0,
+        520
+      ],
+      "size": [
+        420,
+        800
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Pixel sprite + action description -> animated sprite sheet, with MiniMax H3\n\nRecipe of the h3-match session (15 Nov 2026), about 55 s a clip, peak VRAM 21.4 GB.\n1. Load your sprite (blue): native pixel art on a transparent or plain background (an upscaled copy is fine: its\n   grid is detected). Output art pixels, size and palette stay exactly the sprite's.\n2. Describe the action (green). The prompt is the ACTION text alone (switch \"Use character and pose in the prompt\" off):\n   the sprite is the model's first frame, so it does not need to be told what the character looks like. Structured\n   layouts (character, pose and action in one prompt) made walks stop after one or two steps.\n   Write the action as BEATS, two or three plain sentences, 30 to 50 words, imperative: wind-up, strike, impact, settle\n   (\"Raise the hammer overhead with a quick, forceful arc, then slam the head down into the ground with heavy momentum.\n   Pause momentarily for impact weight, then heave the hammer back up and settle it onto the shoulder to reset.\").\n   PixelLab's prompt fixer writes text like this from a short ask; it is not part of this workflow (a later PR can add\n   one with ComfyUI's TextGenerate), so write the beats or let the app do it.\n   The LAST sentence matters: \"return to the initial stance\" makes a walk stop after one or two steps. For a walk or an\n   idle end on something that keeps the motion going. The \"Action (written as beats)\" input fits attacks as written; for loops write the repeating motion.\n3. Prepare: the WHOLE canvas enlarged x4 (nearest neighbour), on the neutral grey or white farthest from the sprite's\n   colours. Not a crop of the sprite plus padding, and never a magenta or green key (both bled into the body); x2 was\n   mushy. The enlargement is the \"factor\" input of the yellow Prepare node (whole numbers; x4 to x8 were tried).\n   It was the clip LENGTH that decided whether a walk worked, not the size: at 39 frames the dwarf walks at x4, x6, x8\n   and x10 alike, landing back on frame 1; 124 frames failed from drift and dead holds. Bigger draws legs more clearly\n   (x4 feet are blobby mid-stride, x8 shows knees and feet) at about twice the time (x4 about 55 s, x8 about 90 to\n   95 s, peak about 21.7 GB), but a smash at x8 is slower and never returns to the shoulder. So x4 is the default\n   (right for attacks), x8 is worth trying for walks. Keep the canvas under about 1.1 megapixels (1440x1248 peaked at\n   23.9 GB). Sprites above 96 px were not tried.\n4. The sprite is the first frame AND the last frame (a loop: walk, idle), like the Wan and LTX workflows. For a one-shot\n   action (attack, cast, smash) disconnect \"last_frame\" on the yellow \"Loop\" node, as the app does.\n5. 39 video frames at 24 fps (the length snaps to 17k+5: 22 is too short for a strike and a return), 8 turbo steps,\n   res_multistep, no CFG. 20 steps bought nothing. Seed in \"Noise\". \"Frames to keep\" takes 13 frames across the clip,\n   the first being the input sprite.\n6. Clean up (yellow): a 4 x 4 block vote, every key-coloured block transparent, each pixel snapped to the sprite's\n   palette; a pixel far from every sprite colour is an effect (spark, trail, flash) and keeps one of at most 4 effect\n   colours; single-pixel noise is removed; a one-colour outline is redrawn; frame 1 is the input sprite itself.\n   Not used: the colour hold of PR 28 (it flattened an impact frame with a white slash to orange) and Hold Figure (it\n   shifts raw frames by whole video pixels, which breaks the 4 x 4 block grid).\nKnown gap: effects come out as video-style crescents and swooshes, not thin pixel lines; the model sometimes turns\ntowards the camera; some single-pixel noise remains.\nModels (~36 GB): H3 first-last-frame w6a8 16 GB, Qwen3-VL 32B encoder 15.7 GB, video VAE, 8-step turbo LoRA.\nLicence: MiniMax H3 Community Licence Agreement. Do not train on H3 output without asking the owner."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      4,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      10,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      10,
+      1,
+      11,
+      1,
+      "MASK"
+    ],
+    [
+      4,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      12,
+      4,
+      13,
+      0,
+      "STRING"
+    ],
+    [
+      6,
+      20,
+      0,
+      23,
+      0,
+      "STRING"
+    ],
+    [
+      7,
+      21,
+      0,
+      23,
+      1,
+      "STRING"
+    ],
+    [
+      8,
+      23,
+      0,
+      24,
+      0,
+      "STRING"
+    ],
+    [
+      9,
+      22,
+      0,
+      24,
+      1,
+      "STRING"
+    ],
+    [
+      10,
+      22,
+      0,
+      25,
+      0,
+      "STRING"
+    ],
+    [
+      11,
+      24,
+      0,
+      25,
+      1,
+      "STRING"
+    ],
+    [
+      12,
+      25,
+      0,
+      26,
+      0,
+      "STRING"
+    ],
+    [
+      13,
+      25,
+      0,
+      30,
+      2,
+      "STRING"
+    ],
+    [
+      14,
+      2,
+      0,
+      30,
+      0,
+      "CLIP"
+    ],
+    [
+      15,
+      3,
+      0,
+      30,
+      1,
+      "VAE"
+    ],
+    [
+      16,
+      12,
+      2,
+      30,
+      3,
+      "INT"
+    ],
+    [
+      17,
+      12,
+      3,
+      30,
+      4,
+      "INT"
+    ],
+    [
+      18,
+      12,
+      0,
+      30,
+      5,
+      "IMAGE"
+    ],
+    [
+      19,
+      12,
+      0,
+      30,
+      6,
+      "IMAGE"
+    ],
+    [
+      20,
+      4,
+      0,
+      42,
+      0,
+      "MODEL"
+    ],
+    [
+      21,
+      4,
+      0,
+      43,
+      0,
+      "MODEL"
+    ],
+    [
+      22,
+      30,
+      0,
+      43,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      23,
+      40,
+      0,
+      44,
+      0,
+      "NOISE"
+    ],
+    [
+      24,
+      43,
+      0,
+      44,
+      1,
+      "GUIDER"
+    ],
+    [
+      25,
+      41,
+      0,
+      44,
+      2,
+      "SAMPLER"
+    ],
+    [
+      26,
+      42,
+      0,
+      44,
+      3,
+      "SIGMAS"
+    ],
+    [
+      27,
+      30,
+      1,
+      44,
+      4,
+      "LATENT"
+    ],
+    [
+      28,
+      44,
+      0,
+      45,
+      0,
+      "LATENT"
+    ],
+    [
+      29,
+      3,
+      0,
+      45,
+      1,
+      "VAE"
+    ],
+    [
+      30,
+      45,
+      0,
+      46,
+      0,
+      "IMAGE"
+    ],
+    [
+      31,
+      45,
+      0,
+      50,
+      0,
+      "IMAGE"
+    ],
+    [
+      32,
+      50,
+      1,
+      58,
+      0,
+      "STRING"
+    ],
+    [
+      33,
+      50,
+      0,
+      51,
+      0,
+      "IMAGE"
+    ],
+    [
+      34,
+      12,
+      1,
+      51,
+      1,
+      "PIXEL_SPEC"
+    ],
+    [
+      35,
+      51,
+      0,
+      53,
+      0,
+      "IMAGE"
+    ],
+    [
+      36,
+      53,
+      1,
+      54,
+      0,
+      "IMAGE"
+    ],
+    [
+      37,
+      54,
+      0,
+      55,
+      0,
+      "STRING"
+    ],
+    [
+      38,
+      53,
+      2,
+      56,
+      0,
+      "STRING"
+    ],
+    [
+      39,
+      51,
+      1,
+      57,
+      0,
+      "STRING"
+    ],
+    [
+      40,
+      53,
+      1,
+      59,
+      0,
+      "IMAGE"
+    ],
+    [
+      41,
+      53,
+      3,
+      59,
+      1,
+      "INT"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Models",
+      "bounding": [
+        -20,
+        -60,
+        460,
+        560
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Sprite + action",
+      "bounding": [
+        440,
+        -60,
+        840,
+        1200
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Animate (MiniMax H3, first frame = sprite)",
+      "bounding": [
+        1280,
+        -60,
+        380,
+        1480
+      ],
+      "color": "#88A",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Back to pixel art",
+      "bounding": [
+        1660,
+        -60,
+        760,
+        1000
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5,
+      "offset": [
+        40,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}
