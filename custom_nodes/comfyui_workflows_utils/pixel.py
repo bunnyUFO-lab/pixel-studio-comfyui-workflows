@@ -1307,8 +1307,114 @@ def _edge4(al):
     return al & (~pad[:-2, 1:-1] | ~pad[2:, 1:-1] | ~pad[1:-1, :-2] | ~pad[1:-1, 2:])
 
 
+# x8-v3 post-passes (round 6: the same H3 frames scored 9.83 against 9.0 for x8-v1). Ported from the research code
+# h3match/_tools/stab_mc.py and fx_ground.py; they run on the finished frames of the clip.
+FOLLOW_HOLD_REACH = 3        # how far (art pixels) a part may have moved between frames
+FOLLOW_HOLD_MISMATCH = 0.5   # the share of the 5 x 5 patch that may differ and still count as the same spot
+FOLLOW_HOLD_MARGIN = 40.0    # the video may be this much closer to the current colour and the held colour still wins
+FOLLOW_HOLD_PATCH = 5
+_VIDEO_WEIGHTS = np.array([0.8, 1.0, 0.6])
+
+
+def _block_median(fr, k):
+    """One colour per k x k block of a video frame: the median of its pixels, per channel (float)."""
+    H, W = fr.shape[0] // k, fr.shape[1] // k
+    return np.median(fr[:H * k, :W * k].astype(np.float64).reshape(H, k, W, k, 3), axis=(1, 3))
+
+
+def _best_shift(ref, cur, reach):
+    """Per pixel, over every offset up to `reach`: the lowest patch mismatch (RGBA equality over a 5 x 5 window) and the
+    reference pixel at that offset. Ties go to the smaller move."""
+    from scipy import ndimage
+    best = np.full(cur.shape[:2], 1e9)
+    val = np.zeros_like(cur)
+    for dy in range(-reach, reach + 1):
+        for dx in range(-reach, reach + 1):
+            shifted = np.roll(np.roll(ref, dy, 0), dx, 1)
+            mis = ~(shifted == cur).all(-1)
+            cost = ndimage.uniform_filter(mis.astype(float), FOLLOW_HOLD_PATCH, mode="constant") + 0.001 * (abs(dx) + abs(dy))
+            better = cost < best
+            best[better] = cost[better]
+            val[better] = shifted[better]
+    return best, val
+
+
+def follow_hold(frames, raw, reach=FOLLOW_HOLD_REACH, mismatch=FOLLOW_HOLD_MISMATCH, margin=FOLLOW_HOLD_MARGIN):
+    """Part-following hold on cleaned RGBA frames (frame 1 stays). Per pixel it looks for where its 5 x 5 patch was, first
+    in the sprite (frame 1), then in the frame before (already held), up to `reach` pixels away. Where the patch matches
+    (mismatch at most `mismatch`), both pixels are opaque and differ, and the video colour (`raw`: the block median of
+    each video frame) is no farther from the old colour than from the current one plus `margin`, the pixel takes the old
+    colour. Transparency is never changed. Stops colours churning on a part that moved as a whole."""
+    out = [frames[0].copy()]
+    for t in range(1, len(frames)):
+        cur = frames[t].copy()
+        for ref in (out[0], out[t - 1]):
+            cost, val = _best_shift(ref, cur, reach)
+            both = (cur[..., 3] > 0) & (val[..., 3] > 0)
+            differs = (cur[..., :3] != val[..., :3]).any(-1)
+            d_cur = (np.abs(raw[t] - cur[..., :3].astype(float)) * _VIDEO_WEIGHTS).sum(-1)
+            d_old = (np.abs(raw[t] - val[..., :3].astype(float)) * _VIDEO_WEIGHTS).sum(-1)
+            take = both & differs & (cost <= mismatch) & (d_old <= d_cur + margin)
+            cur[take, :3] = val[take, :3]
+        out.append(cur)
+    return out
+
+
+def feet_band_rule(frames, band=8):
+    """Drop stray effect colours at the feet (frame 1 stays). An effect pixel is opaque and has a colour the sprite
+    (frame 1) does not. The feet band is the bottom `band` rows of the sprite's silhouette and everything below. A group
+    of effect pixels (8-connected) that reaches the band is removed, unless most of its pixels have colours that also
+    show in a group clear of the band in some frame (then it is a trail or a cast that reaches the ground). A removed
+    pixel becomes the sprite's outline colour where it touches the body and the sprite's edge is mostly outline,
+    otherwise transparent."""
+    from scipy import ndimage
+    k4 = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], bool)
+    k8 = np.ones((3, 3), bool)
+    s = frames[0]
+    sop = s[..., 3] > 0
+    if not sop.any():
+        return [f.copy() for f in frames]
+    pal_key = np.array([int(c[0]) << 16 | int(c[1]) << 8 | int(c[2]) for c in np.unique(s[sop][:, :3], axis=0)], np.int64)
+    sedge = sop & ~ndimage.binary_erosion(sop, k4)
+    ecols, ecnt = np.unique(s[sedge][:, :3], axis=0, return_counts=True)
+    outline = ecols[np.argmax(ecnt)]
+    outline_edge = ecnt.max() / ecnt.sum() >= 0.6
+    top_band = np.nonzero(sop.any(1))[0].max() - band + 1
+
+    def effect_mask(f):
+        key = f[..., 0].astype(np.int64) << 16 | f[..., 1].astype(np.int64) << 8 | f[..., 2]
+        return (f[..., 3] > 0) & ~np.isin(key, pal_key)
+
+    above = set()
+    for f in frames[1:]:
+        lab, _ = ndimage.label(effect_mask(f), k8)
+        for k, sl in enumerate(ndimage.find_objects(lab)):
+            if sl[0].stop - 1 < top_band:
+                above |= {tuple(x) for x in f[lab == k + 1][:, :3]}
+    out = [frames[0].copy()]
+    for f in frames[1:]:
+        f = f.copy()
+        lab, _ = ndimage.label(effect_mask(f), k8)
+        for k, sl in enumerate(ndimage.find_objects(lab)):
+            if sl[0].stop - 1 < top_band:
+                continue
+            blob = lab == k + 1
+            if np.mean([tuple(x) in above for x in f[blob][:, :3]]) >= 0.5:
+                continue
+            body = (f[..., 3] > 0) & ~blob
+            touch = blob & ndimage.binary_dilation(body, k4)
+            f[blob, 3] = 0
+            if outline_edge:
+                f[touch, :3] = outline
+                f[touch, 3] = 255
+        out.append(f)
+    return out
+
+
 def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, effect_threshold=40.0, despeckle=True,
-                       outline=True, first_is_sprite=True, pick="vote", min_hole=1, edge_trim=0, effect_min=1):
+                       outline=True, first_is_sprite=True, pick="vote", min_hole=1, edge_trim=0, effect_min=1, follow_hold_on=False,
+                       feet_band=0, follow_radius=FOLLOW_HOLD_REACH, follow_mismatch=FOLLOW_HOLD_MISMATCH,
+                       follow_margin=FOLLOW_HOLD_MARGIN):
     """Video frames of a sprite animation (the sprite enlarged by spec['factor'] on a flat key colour) -> sprite frames
     on the sprite's own grid, as RGBA. Per frame, no memory of the others:
     1. a k x k block vote (see _collapse_blocks) and every key-coloured block becomes transparent (enclosed gaps too);
@@ -1327,7 +1433,10 @@ def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, ef
     edge_trim: that many passes, before the palette snap, that drop a silhouette-edge pixel whose video colour is nearer
     the key than every sprite colour (blend, not body);
     effect_min: an effect cluster (8-connected) smaller than this is not an effect: it goes if its colour is nearer the
-    key than any sprite colour, else it snaps to the palette like body."""
+    key than any sprite colour, else it snaps to the palette like body.
+    The x8-v3 recipe is x8-v1 plus two passes on the finished frames, in this order: follow_hold_on (follow_hold: a pixel
+    takes its colour from where its part was in the sprite or the frame before) and feet_band=8 (feet_band_rule: effect
+    colours that reach the bottom 8 rows are removed). Both are off by default."""
     f = spec["factor"]
     cw, ch = spec["canvas"]
     bg = np.array(spec["bg"], np.uint8)
@@ -1335,10 +1444,13 @@ def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, ef
     sprite = spec.get("sprite")
     P = _fx_weights(pal)
     outs = []
+    raw_median = []
     for fr in frames_rgb:
         fr = np.asarray(fr)[..., :3]
         if fr.shape[:2] != (ch * f, cw * f):
             fr = np.asarray(Image.fromarray(fr).resize((cw * f, ch * f), Image.BILINEAR))
+        if follow_hold_on:
+            raw_median.append(_block_median(fr, f))
         px = (_collapse_centre(fr, f, bg, bg_tolerance) if pick == "centre" else _collapse_blocks(fr, f, bg, bg_tolerance)).astype(np.float64)
         near = np.abs(px - bg).sum(-1) < bg_tolerance
         alpha = ~near
@@ -1413,8 +1525,19 @@ def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, ef
         if outline_colour is not None:
             o[_edge4(al) & ~isfx] = outline_colour
         rgba = np.dstack([o, (al * 255).astype(np.uint8)])
-        rgba[~al, :3] = 0
+        if not (follow_hold_on or feet_band):
+            rgba[~al, :3] = 0
         out.append(sprite.copy() if (j == 0 and first_is_sprite and sprite is not None) else rgba)
+    if follow_hold_on or feet_band:
+        # the hold compares whole RGBA patches, so the colour under transparent pixels stays until both passes are done
+        if follow_hold_on:
+            out = follow_hold(out, raw_median, follow_radius, follow_mismatch, follow_margin)
+        if feet_band:
+            out = feet_band_rule(out, int(feet_band))
+        # the colour under transparent pixels is not part of the result: zero it last, so nothing downstream that averages
+        # every pixel (a motion measure) sees the palette colour the clean-up leaves there
+        for rgba in out:
+            rgba[rgba[..., 3] == 0, :3] = 0
     return out
 
 
@@ -1610,6 +1733,11 @@ class CleanVideoFrames:
             "min_hole": ("INT", {"default": 1, "min": 1, "max": 64, "tooltip": "A key-coloured region that does not touch the canvas edge is cut out only when it has at least this many pixels. 1 = every one is cut. 4 keeps small key-coloured body parts (a blue-grey arm band on a grey key) from becoming holes."}),
             "edge_trim": ("INT", {"default": 0, "min": 0, "max": 4, "tooltip": "Passes that remove a silhouette-edge pixel whose video colour is nearer the key than every sprite colour (edge blend, not body). 0 = off."}),
             "effect_min": ("INT", {"default": 1, "min": 1, "max": 64, "tooltip": "An effect cluster (8-connected pixels) smaller than this is not an effect: it is removed when nearer the key than any sprite colour, otherwise it snaps to the palette like body. 1 = off."}),
+            "follow_hold": ("BOOLEAN", {"default": False, "tooltip": "Stop colours churning on a part that moves as a whole. A pixel takes the colour its part had in the sprite or in the frame before (found by matching a 5 x 5 patch) when the video agrees. Transparency is never changed. Off = today's output."}),
+            "follow_radius": ("INT", {"default": 3, "min": 1, "max": 8, "tooltip": "Follow hold: how many pixels a part may have moved between frames."}),
+            "follow_mismatch": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "Follow hold: the share of the 5 x 5 patch that may differ and still count as the same spot."}),
+            "follow_margin": ("FLOAT", {"default": 40.0, "min": 0.0, "max": 200.0, "step": 5.0, "tooltip": "Follow hold: how much closer the video may be to the new colour than to the held one and the held one still wins."}),
+            "feet_band": ("INT", {"default": 0, "min": 0, "max": 32, "tooltip": "Rows from the bottom of the sprite. A group of effect-coloured pixels that reaches these rows is removed (stray splats at the feet), unless it shares its colours with an effect higher up in the clip (a trail or a cast). 8 is the x8-v3 value. 0 = off."}),
         }}
 
     RETURN_TYPES = ("IMAGE", "STRING", "STRING")
@@ -1619,10 +1747,12 @@ class CleanVideoFrames:
     DESCRIPTION = "Video frames of a sprite animation back to the sprite's grid: block vote, background cut, palette snap with effect colours, despeckle, outline. For MiniMax H3."
 
     def run(self, frames, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite,
-            pick="vote", min_hole=1, edge_trim=0, effect_min=1):
+            pick="vote", min_hole=1, edge_trim=0, effect_min=1, follow_hold=False, follow_radius=3, follow_mismatch=0.5,
+            follow_margin=40.0, feet_band=0):
         fr = [f[..., :3] for f in to_rgba_np(frames)]
         out = clean_video_frames(fr, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite,
-                                 pick, min_hole, edge_trim, effect_min)
+                                 pick, min_hole, edge_trim, effect_min, bool(follow_hold), int(feet_band), int(follow_radius),
+                                 float(follow_mismatch), float(follow_margin))
         counts = [len(np.unique(o[o[..., 3] > 0][:, :3], axis=0)) if (o[..., 3] > 0).any() else 0 for o in out]
         cw, ch = pixel_spec["canvas"]
         info = (f"{len(out)} frames -> {cw}x{ch} art px, sprite palette {len(pixel_spec['palette'])} colours, "
