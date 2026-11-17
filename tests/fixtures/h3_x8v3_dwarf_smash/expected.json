@@ -1,0 +1,40 @@
+{
+ "case": "dwarf-smash",
+ "key_colour": [
+  160,
+  160,
+  160
+ ],
+ "k": 8,
+ "after_hold": {
+  "c00.png": "040783831902cb05",
+  "c01.png": "e25fb30b7b53f109",
+  "c02.png": "b747083825d91171",
+  "c03.png": "b654fcea97e8e845",
+  "c04.png": "3c22caa3279a6753",
+  "c05.png": "dac0d6920d86fb6e",
+  "c06.png": "2cbca64759e653b7",
+  "c07.png": "87d27940200740e4",
+  "c08.png": "b24cc0dbe988c5ae",
+  "c09.png": "c7a9474c34fedb8d",
+  "c10.png": "66dc6ae68fa46179",
+  "c11.png": "ef5846ed684c38c3",
+  "c12.png": "bef4f2e7e904d8b8"
+ },
+ "x8v3_out": {
+  "c00.png": "040783831902cb05",
+  "c01.png": "e25fb30b7b53f109",
+  "c02.png": "b747083825d91171",
+  "c03.png": "b654fcea97e8e845",
+  "c04.png": "3c22caa3279a6753",
+  "c05.png": "dac0d6920d86fb6e",
+  "c06.png": "2cbca64759e653b7",
+  "c07.png": "87d27940200740e4",
+  "c08.png": "b24cc0dbe988c5ae",
+  "c09.png": "c7a9474c34fedb8d",
+  "c10.png": "66dc6ae68fa46179",
+  "c11.png": "ef5846ed684c38c3",
+  "c12.png": "bef4f2e7e904d8b8"
+ },
+ "counts": {}
+}

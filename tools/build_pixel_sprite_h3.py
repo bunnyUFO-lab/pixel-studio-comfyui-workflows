@@ -16,7 +16,8 @@ and sprite-from-prompt-ltx25 (same inputs by title), with the recipe the h3-matc
 - CleanVideoFrames (a port of h3match/_tools/clean.py, pixel-identical on its test clips), set to the x8-v1 recipe: each
   art pixel is the video pixel at the centre of its block (background by block majority), key-coloured regions cut only
   from 4 pixels up, one pass trimming blend pixels off the silhouette, effect clusters under 3 pixels are not effects,
-  palette snap with up to four effect colours, no despeckle (it halved eyes and studs at x8), outline.
+  palette snap with up to four effect colours, no despeckle (it halved eyes and studs at x8), outline; then the x8-v3
+  passes (round 6: 9.83 against 9.0 for x8-v1 on the same video frames): a part-following hold and the feet-band rule.
 About 90 s a clip at x8 on the local card (42 to 89 s on a warm cloud GPU), about 55 s at x4; peak 21.7 GB. The colour hold of PR 28 is not used: it flattened an impact frame to orange. HoldFigure
 is not used either: it shifts and scales raw frames by whole video pixels, which breaks the block grid the clean-up
 votes on.
@@ -55,15 +56,16 @@ STEPS = 8
 SEED = 6305
 
 # bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite, then the x8-v1 options:
-# pick (centre), min_hole, edge_trim, effect_min. The node's own defaults (vote, 1, 0, 1, despeckle on) are the older
-# x4 recipe; this graph sets the x8-v1 values itself.
-CLEAN = [60.0, 4, 40.0, False, True, True, "centre", 4, 1, 3]
+# pick (centre), min_hole, edge_trim, effect_min, then the x8-v3 passes: follow_hold, its radius, mismatch and margin,
+# feet_band. The node's own defaults (vote, 1, 0, 1, despeckle on, both passes off) are the older x4 recipe; this graph
+# sets the x8-v3 values itself.
+CLEAN = [60.0, 4, 40.0, False, True, True, "centre", 4, 1, 3, True, 3, 0.5, 40.0, 8]
 # frames, filename_prefix, frame_step, max_frames, loop_trim, columns, spacing, trim, fps, tag, preview_scale
 SHEET = ["pixel/sprite_from_prompt_h3", 1, 0, False, 0, 0, True, FPS, "action", 4]
 
 NOTE = f"""Pixel sprite + action description -> animated sprite sheet, with MiniMax H3
 
-Recipe of the h3-match session (15 Nov 2026) at the x8-v1 settings (16 Nov 2026): about 90 s a clip at x8 on the local card, 42 to 89 s on a warm cloud GPU, peak VRAM about 21.7 GB.
+Recipe of the h3-match session (15 Nov 2026) at the x8-v3 settings (17 Nov 2026): about 90 s a clip at x8 on the local card, 42 to 89 s on a warm cloud GPU, peak VRAM about 21.7 GB.
 1. Load your sprite (blue): native pixel art on a transparent or plain background (an upscaled copy is fine: its
    grid is detected). Output art pixels, size and palette stay exactly the sprite's.
 2. Describe the action (green). The prompt is the ACTION text alone (switch "Use character and pose in the prompt" off):
@@ -83,7 +85,7 @@ Recipe of the h3-match session (15 Nov 2026) at the x8-v1 settings (16 Nov 2026)
    75% correct at x4 and 98.7% at x8, and the owner rated the x8 clips 9 to 10 and the x4 clips 7 to 9 ("blurry").
    x4 stays available and takes about half the time (about 55 s against about 90 s locally, 42 to 89 s at x8 on a warm
    cloud GPU): set "factor" to 4 and, if you like, the clean-up's pick to vote, despeckle on, min_hole 1, edge_trim 0,
-   effect_min 1 (the node's own defaults). It was the clip LENGTH that decided whether a walk worked, not the size: at
+   effect_min 1, follow_hold off and feet_band 0 (the node's own defaults). It was the clip LENGTH that decided whether a walk worked, not the size: at
    {LENGTH} frames the dwarf walks at x4, x6, x8 and x10 alike, landing back on frame 1; 124 frames failed from drift and
    dead holds. Keep the canvas under about 1.1 megapixels (1440x1248 peaked at 23.9 GB, so a 128 px sprite fits at x8
    with no padding, a bigger one needs a lower factor). Sprites above 128 px were not tried.
@@ -92,12 +94,16 @@ Recipe of the h3-match session (15 Nov 2026) at the x8-v1 settings (16 Nov 2026)
 5. {LENGTH} video frames at 24 fps (the length snaps to 17k+5: 22 is too short for a strike and a return), 8 turbo steps,
    res_multistep, no CFG. 20 steps bought nothing. Seed in "Noise". "Frames to keep" takes {FRAMES} frames across the clip,
    the first being the input sprite.
-6. Clean up (yellow), the x8-v1 settings: each art pixel is the video pixel at the centre of its {FACTOR} x {FACTOR} block
+6. Clean up (yellow), the x8-v3 settings (x8-v1 plus two passes, described after the list): each art pixel is the video pixel at the centre of its {FACTOR} x {FACTOR} block
    (the block's majority decides background or body); key-coloured regions are transparent only from 4 pixels up
    (smaller ones are body: a blue-grey arm band on a grey key); one pass removes silhouette pixels nearer the key than
    any sprite colour; each pixel is snapped to the sprite's palette; a pixel far from every sprite colour is an effect
    (spark, trail, flash) and keeps one of at most 4 effect colours, but a cluster under 3 pixels is not an effect; no
    despeckle (it halved eyes and studs at x8); a one-colour outline is redrawn; frame 1 is the input sprite itself.
+   Then two passes on the finished frames: the hold (follow_hold) gives a pixel the colour its part had in the sprite or the
+   frame before (found by matching a 5 x 5 patch up to 3 pixels away) when the video agrees, which stops colours churning on
+   a moving part; the feet-band rule (feet_band 8) removes a group of effect colours that reaches the bottom 8 rows (a splat
+   on the ground) unless its colours also show higher up in the clip (a trail or a cast). For x4, turn both off.
    Not used: the colour hold of PR 28 (it flattened an impact frame with a white slash to orange) and Hold Figure (it
    shifts raw frames by whole video pixels, which breaks the block grid).
 Known gap: effects come out as video-style crescents and swooshes, not thin pixel lines; the model sometimes turns

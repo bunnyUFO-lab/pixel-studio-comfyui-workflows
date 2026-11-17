@@ -1,0 +1,40 @@
+{
+ "case": "armour-slash",
+ "key_colour": [
+  255,
+  255,
+  255
+ ],
+ "k": 8,
+ "after_hold": {
+  "c00.png": "7482eb527a8ef47a",
+  "c01.png": "0145726f0dbfb3c2",
+  "c02.png": "3f67618abbb44aa3",
+  "c03.png": "05a5c8d126863e74",
+  "c04.png": "bf98f63472e47b85",
+  "c05.png": "d39e41c6a9954663",
+  "c06.png": "41aa62796bfb82ba",
+  "c07.png": "085cc178867a05c4",
+  "c08.png": "db0467165245e231",
+  "c09.png": "95d573e088ad9e88",
+  "c10.png": "09d45db144849abe",
+  "c11.png": "66d4e4ec3649365e",
+  "c12.png": "6bc16abeee808e25"
+ },
+ "x8v3_out": {
+  "c00.png": "7482eb527a8ef47a",
+  "c01.png": "0145726f0dbfb3c2",
+  "c02.png": "3f67618abbb44aa3",
+  "c03.png": "05a5c8d126863e74",
+  "c04.png": "bf98f63472e47b85",
+  "c05.png": "d39e41c6a9954663",
+  "c06.png": "41aa62796bfb82ba",
+  "c07.png": "085cc178867a05c4",
+  "c08.png": "db0467165245e231",
+  "c09.png": "26f3123e8fc27786",
+  "c10.png": "09d45db144849abe",
+  "c11.png": "66d4e4ec3649365e",
+  "c12.png": "6bc16abeee808e25"
+ },
+ "counts": {}
+}

@@ -81,11 +81,11 @@ pick = by_title["Frames to keep (across the whole clip)"]
 clean = by_title["Clean up (block vote, palette, effect colours)"]
 check(source(pick, "frames")["type"] == "VAEDecode" and pick["widgets_values"] == [13, False], "13 frames are picked from the decoded video, the first being the input sprite")
 check(source(clean, "frames") is pick and source(clean, "pixel_spec") is by_title["Prepare sprite (integer upscale)"], "the clean-up works on the picked frames and the preparation's spec")
-check(clean["widgets_values"] == [60.0, 4, 40.0, False, True, True, "centre", 4, 1, 3],
-      "clean-up = x8-v1: tolerance 60, 4 effect colours, threshold 40, no despeckle, outline, frame 1 = sprite, pick centre, min_hole 4, edge_trim 1, effect_min 3")
+check(clean["widgets_values"] == [60.0, 4, 40.0, False, True, True, "centre", 4, 1, 3, True, 3, 0.5, 40.0, 8],
+      "clean-up = x8-v3: tolerance 60, 4 effect colours, threshold 40, no despeckle, outline, frame 1 = sprite, pick centre, min_hole 4, edge_trim 1, effect_min 3, follow_hold on (3, 0.5, 40), feet_band 8")
 px_inputs = px.CleanVideoFrames.INPUT_TYPES()
 names = list(px_inputs["required"]) + list(px_inputs["optional"])
-check(names[5:] == ["despeckle", "outline", "first_is_sprite", "pick", "min_hole", "edge_trim", "effect_min"],
+check(names[5:] == ["despeckle", "outline", "first_is_sprite", "pick", "min_hole", "edge_trim", "effect_min", "follow_hold", "follow_radius", "follow_mismatch", "follow_margin", "feet_band"],
       "the graph's widget order matches the node's inputs")
 check(source(by_title["Save sprite sheet"], "frames") is clean, "the sheet is made from the cleaned frames")
 check(not any(n["type"] in ("HoldFigure", "RepixelateFrames") for n in wf["nodes"]), "the colour hold (a RepixelateFrames option) and Hold Figure are not used")
