@@ -68,7 +68,7 @@ check(by_title["Use character and pose in the prompt"]["widgets_values"][0] is F
 
 # the recipe of the h3-match session
 prep = by_title["Prepare sprite (integer upscale)"]
-check(prep["widgets_values"][4:] == ["whole canvas", 4], "preparation: the whole canvas enlarged x4, not a crop plus padding")
+check(prep["widgets_values"][4:] == ["whole canvas", 8], "preparation: the whole canvas enlarged x8 (the x8-v1 default; x4 is one value away), not a crop plus padding")
 check(h3["widgets_values"][3] == 39 and (h3["widgets_values"][3] - 5) % 17 == 0, "39 video frames, on the 17k+5 grid")
 sched = next(n for n in wf["nodes"] if n["type"] == "BasicScheduler")
 check(sched["widgets_values"][:2] == ["simple", 8], "8 steps, simple schedule")
@@ -81,7 +81,12 @@ pick = by_title["Frames to keep (across the whole clip)"]
 clean = by_title["Clean up (block vote, palette, effect colours)"]
 check(source(pick, "frames")["type"] == "VAEDecode" and pick["widgets_values"] == [13, False], "13 frames are picked from the decoded video, the first being the input sprite")
 check(source(clean, "frames") is pick and source(clean, "pixel_spec") is by_title["Prepare sprite (integer upscale)"], "the clean-up works on the picked frames and the preparation's spec")
-check(clean["widgets_values"] == [60.0, 4, 40.0, True, True, True], "clean-up defaults: tolerance 60, 4 effect colours, threshold 40, despeckle, outline, frame 1 = sprite")
+check(clean["widgets_values"] == [60.0, 4, 40.0, False, True, True, "centre", 4, 1, 3],
+      "clean-up = x8-v1: tolerance 60, 4 effect colours, threshold 40, no despeckle, outline, frame 1 = sprite, pick centre, min_hole 4, edge_trim 1, effect_min 3")
+px_inputs = px.CleanVideoFrames.INPUT_TYPES()
+names = list(px_inputs["required"]) + list(px_inputs["optional"])
+check(names[5:] == ["despeckle", "outline", "first_is_sprite", "pick", "min_hole", "edge_trim", "effect_min"],
+      "the graph's widget order matches the node's inputs")
 check(source(by_title["Save sprite sheet"], "frames") is clean, "the sheet is made from the cleaned frames")
 check(not any(n["type"] in ("HoldFigure", "RepixelateFrames") for n in wf["nodes"]), "the colour hold (a RepixelateFrames option) and Hold Figure are not used")
 

@@ -1283,6 +1283,24 @@ def _collapse_blocks(fr, k, bg, tol):
     return col
 
 
+def _collapse_centre(fr, k, bg, tol):
+    """The x8-v1 collapse: one art pixel takes the video pixel at the centre of its k x k block. Whether the block is
+    background is the block's majority (at least half its pixels within `tol` of the key). A body block whose centre
+    pixel is itself key-coloured takes the block's pixel farthest from the key instead."""
+    H, W = fr.shape[0] // k, fr.shape[1] // k
+    blk = fr[:H * k, :W * k].astype(np.int32).reshape(H, k, W, k, 3).transpose(0, 2, 1, 3, 4).reshape(H, W, k * k, 3)
+    bgi = bg.astype(np.int32)
+    db = np.abs(blk - bgi).sum(-1)
+    col = blk[:, :, (k // 2) * k + k // 2].copy()
+    fb = (db < tol).mean(-1)
+    col[fb >= 0.5] = bgi
+    cen_bg = np.abs(col - bgi).sum(-1) < 2.5 * tol
+    alt = np.take_along_axis(blk, db.argmax(-1)[:, :, None, None], 2)[:, :, 0]
+    fix = (fb < 0.5) & cen_bg
+    col[fix] = alt[fix]
+    return col
+
+
 def _edge4(al):
     """Opaque pixels with at least one transparent 4-neighbour (the image border counts as transparent)."""
     pad = np.pad(al, 1)
@@ -1290,7 +1308,7 @@ def _edge4(al):
 
 
 def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, effect_threshold=40.0, despeckle=True,
-                       outline=True, first_is_sprite=True):
+                       outline=True, first_is_sprite=True, pick="vote", min_hole=1, edge_trim=0, effect_min=1):
     """Video frames of a sprite animation (the sprite enlarged by spec['factor'] on a flat key colour) -> sprite frames
     on the sprite's own grid, as RGBA. Per frame, no memory of the others:
     1. a k x k block vote (see _collapse_blocks) and every key-coloured block becomes transparent (enclosed gaps too);
@@ -1300,7 +1318,16 @@ def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, ef
        of the first frame's own error (the first frame is the sprite itself, so its error is only video noise);
     3. despeckle: a body pixel none of whose neighbours share its colour takes the neighbours' commonest colour, and a
        lone opaque pixel goes; 4. outline: when the sprite's silhouette edge is at least 60% one colour, body pixels on
-       the silhouette edge take it. Frame 1 is the input sprite itself when `first_is_sprite`."""
+       the silhouette edge take it. Frame 1 is the input sprite itself when `first_is_sprite`.
+    The defaults of pick, min_hole, edge_trim and effect_min are the original behaviour. The x8-v1 recipe (rated game-ready
+    on x8 canvas clips) is pick="centre", despeckle off, min_hole=4, edge_trim=1, effect_min=3:
+    pick "centre": the colour is the block's centre pixel, the background vote stays the block majority (_collapse_centre);
+    min_hole: a key-coloured region that does not touch the canvas edge is cut only when it has at least this many pixels
+    (4-connected), smaller ones stay body (a blue-grey part near a grey key is not a hole);
+    edge_trim: that many passes, before the palette snap, that drop a silhouette-edge pixel whose video colour is nearer
+    the key than every sprite colour (blend, not body);
+    effect_min: an effect cluster (8-connected) smaller than this is not an effect: it goes if its colour is nearer the
+    key than any sprite colour, else it snaps to the palette like body."""
     f = spec["factor"]
     cw, ch = spec["canvas"]
     bg = np.array(spec["bg"], np.uint8)
@@ -1312,8 +1339,21 @@ def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, ef
         fr = np.asarray(fr)[..., :3]
         if fr.shape[:2] != (ch * f, cw * f):
             fr = np.asarray(Image.fromarray(fr).resize((cw * f, ch * f), Image.BILINEAR))
-        px = _collapse_blocks(fr, f, bg, bg_tolerance).astype(np.float64)
-        alpha = ~(np.abs(px - bg).sum(-1) < bg_tolerance)
+        px = (_collapse_centre(fr, f, bg, bg_tolerance) if pick == "centre" else _collapse_blocks(fr, f, bg, bg_tolerance)).astype(np.float64)
+        near = np.abs(px - bg).sum(-1) < bg_tolerance
+        alpha = ~near
+        if min_hole > 1:
+            from scipy import ndimage
+            lbl, n = ndimage.label(near)
+            border = np.unique(np.concatenate([lbl[0], lbl[-1], lbl[:, 0], lbl[:, -1]]))
+            small = np.bincount(lbl.ravel(), minlength=n + 1) < min_hole
+            small[0] = False
+            small[border] = False
+            alpha = alpha | small[lbl]
+        for _ in range(int(edge_trim)):
+            dbg = np.linalg.norm(_fx_weights(px) - _fx_weights(bg), axis=-1)
+            dpal = np.linalg.norm(_fx_weights(px)[:, :, None, :] - P[None, None], axis=-1).min(-1)
+            alpha = alpha & ~(_edge4(alpha) & (dbg < dpal))
         outs.append((px, alpha))
     D0 = np.linalg.norm(_fx_weights(outs[0][0])[:, :, None, :] - P[None, None], axis=-1).min(-1)
     thr = max(effect_threshold, float(np.percentile(D0[outs[0][1]], 99)) * 1.5) if outs[0][1].any() else effect_threshold
@@ -1322,6 +1362,13 @@ def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, ef
         D = np.linalg.norm(_fx_weights(px)[:, :, None, :] - P[None, None], axis=-1)
         snapped = pal[D.argmin(-1)]
         isfx = (D.min(-1) > thr) & alpha if effect_colours > 0 else np.zeros_like(alpha)
+        if effect_min > 1 and isfx.any():
+            from scipy import ndimage
+            lf, _ = ndimage.label(isfx, structure=np.ones((3, 3)))
+            tiny = isfx & (np.bincount(lf.ravel())[lf] < effect_min)
+            nearbg = np.linalg.norm(_fx_weights(px) - _fx_weights(bg), axis=-1) < D.min(-1)
+            alpha = alpha & ~(tiny & nearbg)
+            isfx = isfx & ~tiny
         res.append((snapped, alpha, isfx, px))
         fx_pixels.append(px[isfx])
     fxall = np.concatenate(fx_pixels) if fx_pixels else np.zeros((0, 3))
@@ -1558,6 +1605,11 @@ class CleanVideoFrames:
             "despeckle": ("BOOLEAN", {"default": True, "tooltip": "Remove single-pixel noise: a body pixel that shares its colour with none of its neighbours takes theirs; lone pixels go."}),
             "outline": ("BOOLEAN", {"default": True, "tooltip": "When the sprite has a one-colour outline, redraw it on every frame's silhouette."}),
             "first_is_sprite": ("BOOLEAN", {"default": True, "tooltip": "Frame 1 is the input sprite itself (the video's first frame is the sprite). Turn off when the first frame given is not video frame 0."}),
+        }, "optional": {
+            "pick": (["vote", "centre"], {"default": "vote", "tooltip": "How a block of video pixels becomes one sprite pixel. vote = the block's body colour (blurs fine detail, fine at x4). centre = the pixel at the block's centre, background still decided by the block majority (keeps single-pixel detail at x8)."}),
+            "min_hole": ("INT", {"default": 1, "min": 1, "max": 64, "tooltip": "A key-coloured region that does not touch the canvas edge is cut out only when it has at least this many pixels. 1 = every one is cut. 4 keeps small key-coloured body parts (a blue-grey arm band on a grey key) from becoming holes."}),
+            "edge_trim": ("INT", {"default": 0, "min": 0, "max": 4, "tooltip": "Passes that remove a silhouette-edge pixel whose video colour is nearer the key than every sprite colour (edge blend, not body). 0 = off."}),
+            "effect_min": ("INT", {"default": 1, "min": 1, "max": 64, "tooltip": "An effect cluster (8-connected pixels) smaller than this is not an effect: it is removed when nearer the key than any sprite colour, otherwise it snaps to the palette like body. 1 = off."}),
         }}
 
     RETURN_TYPES = ("IMAGE", "STRING", "STRING")
@@ -1566,9 +1618,11 @@ class CleanVideoFrames:
     CATEGORY = "comfyui_workflows/pixel"
     DESCRIPTION = "Video frames of a sprite animation back to the sprite's grid: block vote, background cut, palette snap with effect colours, despeckle, outline. For MiniMax H3."
 
-    def run(self, frames, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite):
+    def run(self, frames, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite,
+            pick="vote", min_hole=1, edge_trim=0, effect_min=1):
         fr = [f[..., :3] for f in to_rgba_np(frames)]
-        out = clean_video_frames(fr, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite)
+        out = clean_video_frames(fr, pixel_spec, bg_tolerance, effect_colours, effect_threshold, despeckle, outline, first_is_sprite,
+                                 pick, min_hole, edge_trim, effect_min)
         counts = [len(np.unique(o[o[..., 3] > 0][:, :3], axis=0)) if (o[..., 3] > 0).any() else 0 for o in out]
         cw, ch = pixel_spec["canvas"]
         info = (f"{len(out)} frames -> {cw}x{ch} art px, sprite palette {len(pixel_spec['palette'])} colours, "
