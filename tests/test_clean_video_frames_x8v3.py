@@ -8,7 +8,9 @@ that must go).
 Fixtures (tests/fixtures/h3_x8v3_dwarf_smash, h3_x8v3_armour_slash): v00..v12 are the 13 picked raw 768 x 768 video frames
 (lossless WebP: the hold needs the per-channel median of every 8 x 8 block, so they are not reduced), sprite.png the input
 sprite, expected.json the SHA-256 (first 16 hex) of each expected frame's RGBA bytes after the hold alone and after both
-passes. The hash covers all four bytes, so the colour stored under transparent pixels counts: the hold compares it.
+passes. The hash covers all four bytes, so the colour stored under transparent pixels counts: the hold compares it. The node
+zeroes that colour as its last step, so the hashes are checked on the passes' own output (captured inside the node) and the
+node's final frames are compared with it on every visible pixel and alpha, with RGB 0 under alpha 0.
 """
 import hashlib
 import json
@@ -61,20 +63,36 @@ for tag in ("dwarf_smash", "armour_slash"):
 
     base = px.clean_video_frames(frames, spec, *STD, **X8)
     held = px.clean_video_frames(frames, spec, *STD, **X8, follow_hold_on=True)
-    check(digest(held) == want_hold, f"{tag}: the hold alone matches the research frames byte for byte (13 of 13)")
-    t0 = time.perf_counter()
-    full = px.clean_video_frames(frames, spec, *STD, **X8, follow_hold_on=True, feet_band=8)
-    timings.append(time.perf_counter() - t0)
-    check(digest(full) == want_out, f"{tag}: hold + feet band match the research x8-v3 frames byte for byte (13 of 13)")
+    seen = {}
+    orig_hold, orig_feet = px.follow_hold, px.feet_band_rule
+    def tap(name, fn):                      # keep a copy of a pass's own output (the node zeroes the frames afterwards)
+        def run(*a, **k):
+            r = fn(*a, **k)
+            seen[name] = [f.copy() for f in r]
+            return r
+        return run
+    px.follow_hold, px.feet_band_rule = tap("hold", orig_hold), tap("feet", orig_feet)
+    try:
+        t0 = time.perf_counter()
+        full = px.clean_video_frames(frames, spec, *STD, **X8, follow_hold_on=True, feet_band=8)
+        timings.append(time.perf_counter() - t0)
+    finally:
+        px.follow_hold, px.feet_band_rule = orig_hold, orig_feet
+    check(digest(seen["hold"]) == want_hold, f"{tag}: the hold alone matches the research frames byte for byte (13 of 13)")
+    check(digest(seen["feet"]) == want_out, f"{tag}: hold + feet band match the research x8-v3 frames byte for byte (13 of 13)")
+    check(all(np.array_equal(vis(a), vis(b)) for a, b in zip(full, seen["feet"])) and all(np.array_equal(a[..., 3], b[..., 3]) for a, b in zip(full, seen["feet"])),
+          f"{tag}: the node's final frames equal the research x8-v3 frames on every visible pixel and alpha")
+    check(all((f[f[..., 3] == 0][:, :3] == 0).all() for f in full), f"{tag}: RGB is 0 under every transparent pixel of the final frames")
+    check(all((f[f[..., 3] == 0][:, :3] == 0).all() for f in held), f"{tag}: also with the hold alone")
+    span = lambda fr: float(np.mean([np.abs(f.astype(float) - fr[0].astype(float)).mean() for f in fr[1:]]))
+    check(abs(span(full) - span(base)) < 1.0, f"{tag}: whole-frame motion of the output stays at the x8-v1 level ({span(base):.1f} -> {span(full):.1f})")
 
     # alpha is never changed by the hold; the sprite frame is never changed by either pass
     check(all(np.array_equal(a[..., 3], b[..., 3]) for a, b in zip(base, held)), f"{tag}: the hold leaves every alpha value alone")
     check(np.array_equal(full[0], sprite), f"{tag}: frame 1 stays the input sprite")
     check(any(not np.array_equal(vis(a), vis(b)) for a, b in zip(base, held)), f"{tag}: the hold changes some colours")
 
-    # both off = x8-v1, exactly, also through the node with its input names
-    off = px.clean_video_frames(frames, spec, *STD, **X8, follow_hold_on=False, feet_band=0)
-    check(all(np.array_equal(a, b) for a, b in zip(base, off)), f"{tag}: with both inputs off the output is x8-v1, unchanged")
+    # both off = x8-v1: test_clean_video_frames_x8.py holds that against the research x8-v1 frames
     nd, _, _ = px.CleanVideoFrames().run(torch.from_numpy(np.stack(frames).astype(np.float32) / 255.0), spec, *STD, **X8,
                                          follow_hold=True, feet_band=8)
     nd = (nd.numpy() * 255).round().astype(np.uint8)

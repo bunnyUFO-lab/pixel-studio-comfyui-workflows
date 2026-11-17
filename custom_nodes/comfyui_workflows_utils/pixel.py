@@ -1529,13 +1529,15 @@ def clean_video_frames(frames_rgb, spec, bg_tolerance=60.0, effect_colours=4, ef
             rgba[~al, :3] = 0
         out.append(sprite.copy() if (j == 0 and first_is_sprite and sprite is not None) else rgba)
     if follow_hold_on or feet_band:
-        # the passes compare whole RGBA patches, so the colour under transparent pixels stays until both are done
+        # the hold compares whole RGBA patches, so the colour under transparent pixels stays until both passes are done
         if follow_hold_on:
             out = follow_hold(out, raw_median, follow_radius, follow_mismatch, follow_margin)
         if feet_band:
             out = feet_band_rule(out, int(feet_band))
-        # the colour under transparent pixels is left as the passes had it (the research frames carry it, and the
-        # fixtures hash all four bytes); only the alpha channel and the visible pixels are the result
+        # the colour under transparent pixels is not part of the result: zero it last, so nothing downstream that averages
+        # every pixel (a motion measure) sees the palette colour the clean-up leaves there
+        for rgba in out:
+            rgba[rgba[..., 3] == 0, :3] = 0
     return out
 
 

@@ -85,7 +85,7 @@ Recipe of the h3-match session (15 Nov 2026) at the x8-v3 settings (17 Nov 2026)
    75% correct at x4 and 98.7% at x8, and the owner rated the x8 clips 9 to 10 and the x4 clips 7 to 9 ("blurry").
    x4 stays available and takes about half the time (about 55 s against about 90 s locally, 42 to 89 s at x8 on a warm
    cloud GPU): set "factor" to 4 and, if you like, the clean-up's pick to vote, despeckle on, min_hole 1, edge_trim 0,
-   effect_min 1, follow_hold off and feet_band 0 (the node's own defaults). It was the clip LENGTH that decided whether a walk worked, not the size: at
+   effect_min 1 (the node's own defaults; the x8-v3 passes work at x4 too, the research code applies them at any scale). It was the clip LENGTH that decided whether a walk worked, not the size: at
    {LENGTH} frames the dwarf walks at x4, x6, x8 and x10 alike, landing back on frame 1; 124 frames failed from drift and
    dead holds. Keep the canvas under about 1.1 megapixels (1440x1248 peaked at 23.9 GB, so a 128 px sprite fits at x8
    with no padding, a bigger one needs a lower factor). Sprites above 128 px were not tried.
@@ -103,7 +103,7 @@ Recipe of the h3-match session (15 Nov 2026) at the x8-v3 settings (17 Nov 2026)
    Then two passes on the finished frames: the hold (follow_hold) gives a pixel the colour its part had in the sprite or the
    frame before (found by matching a 5 x 5 patch up to 3 pixels away) when the video agrees, which stops colours churning on
    a moving part; the feet-band rule (feet_band 8) removes a group of effect colours that reaches the bottom 8 rows (a splat
-   on the ground) unless its colours also show higher up in the clip (a trail or a cast). For x4, turn both off.
+   on the ground) unless its colours also show higher up in the clip (a trail or a cast). Both work at any scale, x4 included (the research code applies them at x4 too).
    Not used: the colour hold of PR 28 (it flattened an impact frame with a white slash to orange) and Hold Figure (it
    shifts raw frames by whole video pixels, which breaks the block grid).
 Known gap: effects come out as video-style crescents and swooshes, not thin pixel lines; the model sometimes turns
