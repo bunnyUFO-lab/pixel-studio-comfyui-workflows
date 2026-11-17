@@ -87,6 +87,9 @@ PIXEL_STYLES = {
     "prop / tile": "A game environment prop with simple shapes and a clear outline, as used in tile-based games.",
     "terrain tile (seamless)": "A seamless, tileable top-down terrain texture for a tile-based game, seen straight from "
                                "above, filling the whole image edge to edge.",
+    # a short training-caption sentence instead of the template: "<subject>. Shown full body, <view>, on a plain
+    # magenta background, in <trigger> style." The form our own Flux 2 Klein LoRA was trained on (trigger "mosspx").
+    "LoRA caption": "",
     "none": "",
 }
 PIXEL_VIEWS = {
@@ -163,6 +166,18 @@ class PixelArtPrompt:
                         "no outline": "No outlines; shapes are separated by colour only.",
                         "coloured outline": "Thin outlines in a darker shade of each colour."}[outline]
         v = PIXEL_VIEWS[view]
+        if style == "LoRA caption":
+            word = {"plain white": "white", "plain light grey": "light grey", "solid green (chroma key)": "green",
+                    "solid magenta (chroma key)": "magenta"}[background]
+            trig = trigger.strip().rstrip(".!:;,") if lora_trigger else ""
+            if trig and not trig.lower().endswith(" style"):
+                trig += " style"
+            return (_join([
+                f"{subject.strip().rstrip('.')}.",
+                f"Shown full body, {v}," if v else "Shown full body,",
+                f"on a plain {word} background" + (f", in {trig}." if trig else "."),
+                extra,
+            ]).replace(",,", ","), pixels, colors, palette)
         if style == "terrain tile (seamless)":
             return (_join([
                 trig,

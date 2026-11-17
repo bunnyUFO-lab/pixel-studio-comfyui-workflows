@@ -15,6 +15,7 @@ these workflows and connect Pixel Studio to them.
 | [`pixel-art/image-to-pixel`](workflows/pixel-art/image-to-pixel.json) | Turns any image into true pixel art at its native size, with a limited palette and clean transparency. |
 | [`pixel-art/prompt-to-pixel`](workflows/pixel-art/prompt-to-pixel.json) | Makes a pixel-art sprite from a text prompt. |
 | [`pixel-art/prompt-to-pixel-krea2`](workflows/pixel-art/prompt-to-pixel-krea2.json) | The same with the Krea 2 model (experimental). |
+| [`pixel-art/prompt-to-pixel-klein`](workflows/pixel-art/prompt-to-pixel-klein.json) | The same with Flux 2 Klein 4B (Apache-2.0, 4 steps, ~2 s a picture) and our own pixel-art LoRA on a magenta background (the LoRA file is not published yet). |
 | [`pixel-art/image-to-directions`](workflows/pixel-art/image-to-directions.json) | Turns one character image into an 8-direction sprite set. |
 | [`pixel-art/image-to-directions-2511`](workflows/pixel-art/image-to-directions-2511.json) | The same with Qwen-Image-Edit-2511 at 4 steps (Apache 2.0); won the blind picks for directions. Needs ComfyUI 0.41. |
 | [`pixel-art/sprite-edit`](workflows/pixel-art/sprite-edit.json) | Edits a sprite (or animation frames) from a prompt, keeping its size, grid and palette. `sprite-edit-ref` / `sprite-edit-refs` also take reference images. |
