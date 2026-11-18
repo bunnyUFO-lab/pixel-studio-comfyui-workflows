@@ -10,6 +10,9 @@ these workflows and connect Pixel Studio to them.
 
 ### Pixel art
 
+How these workflows get real pixel art out of a diffusion model, step by step, before and after the model:
+[docs/pixel-pipeline.md](docs/pixel-pipeline.md).
+
 | Workflow | What it does |
 |---|---|
 | [`pixel-art/image-to-pixel`](workflows/pixel-art/image-to-pixel.json) | Turns any image into true pixel art at its native size, with a limited palette and clean transparency. |
