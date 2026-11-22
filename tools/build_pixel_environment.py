@@ -13,6 +13,17 @@ MASTER_PROMPT = (
     "wide game environment filling the frame edge to edge, flat deliberate pixel clusters, no UI, frame, text, "
     "characters, gradients or lettering."
 )
+DETAILED_MASTER_PROMPT = (
+    "Pixel art style. Painterly pixel-art environment for a side-view game. Cinder Coast at late afternoon: "
+    "a wide terracotta sandstone coastline bordering a cool turquoise sea, seen at eye level. A near cliff at "
+    "the left edge frames the view with rough layered stone and sparse olive shrubs. A curved middle-distance "
+    "shoreline recedes toward a distant hazy island silhouette on the right. Upper-left sunlight cuts across "
+    "the irregular shelves, with warm rock highlights, cool violet shadows and softer blue-grey distant land. "
+    "Use softened organic contours and nuanced, stepped colour ramps. Shape the rock with irregular clustered "
+    "brushwork, and keep only the focal silhouette edges crisp. Leave a quiet lower quarter for a playable "
+    "foreground and keep the horizon readable. Full-bleed opaque background, no text, frame, UI, characters, "
+    "blur, or airbrushed gradients."
+)
 PROP_PROMPT = (
     "Use the whole input landscape as an art style and material reference, not as the output composition. "
     "Draw only one squat terracotta sandstone waymarker with a turquoise enamel inset and a tuft of olive "
@@ -26,6 +37,13 @@ MATERIAL_PROMPT = (
     "shallow horizontal grain, even lighting, subtle contrast. The only thing in frame is the material "
     "surface: flat orthographic texture, no perspective, objects, skyline, typography, gradients or borders."
 )
+QUIET_MATERIAL_PROMPT = (
+    "Use the input landscape for the palette, material and shading. Draw one matte sandstone surface seen directly "
+    "from above, filling the square edge to edge. Use broad painterly patches with subtle stepped shades, "
+    "shallow irregular cracks and a few larger stone chips. Keep the contrast low so sprites and path markers "
+    "remain easy to read. Avoid scattered single-pixel specks, evenly spaced decoration, hard lines along outer "
+    "edges, highlights that look wet, perspective, objects, text, and borders."
+)
 
 
 def save_image(g, id_, x, y, source, prefix, title, slot=0):
@@ -34,10 +52,10 @@ def save_image(g, id_, x, y, source, prefix, title, slot=0):
     g.link(source, slot, id_, 0)
 
 
-def pixelize(g, id_, x, y, source, *, title, size, measure, colors, background, edge_cleanup):
+def pixelize(g, id_, x, y, source, *, title, size, measure, colors, background, edge_cleanup, smooth=0.0):
     g.node(id_, "Pixelize", [x, y], [350, 440], inputs=[inp("images", "IMAGE")],
            outputs=[out("pixel_art", "IMAGE"), out("preview", "IMAGE"), out("palette", "STRING"), out("info", "STRING")],
-           widgets=[size, measure, "median", 0.0, colors, 20.0, "auto", True, background, 12.0,
+           widgets=[size, measure, "median", smooth, colors, 20.0, "auto", True, background, 12.0,
                     False, edge_cleanup, "none", 0, 2],
            title=title, color=YELLOW)
     g.link(source, 0, id_, 0)
@@ -48,14 +66,17 @@ def preview_text(g, id_, x, y, source, slot, title):
     g.link(source, slot, id_, 0)
 
 
-def build_master():
+def build_master(detailed=False):
     g = Graph()
     node, link = g.node, g.link
+    suffix = "-detailed" if detailed else ""
+    prefix = "environment_master_detailed" if detailed else "environment_master"
+    prompt = DETAILED_MASTER_PROMPT if detailed else MASTER_PROMPT
     node(1, "UNETLoader", [0, 0], [350, 82], outputs=[out("MODEL", "MODEL")], widgets=[ZIMAGE_MODEL, "default"],
          title="Z-Image Turbo", props=models(ZIMAGE_MODEL, f"{ZIMAGE_HF}/diffusion_models/{ZIMAGE_MODEL}", "diffusion_models",
                                                "UNETLoader"))
     node(2, "LoraLoaderModelOnly", [0, 120], [350, 82], inputs=[inp("model", "MODEL")], outputs=[out("MODEL", "MODEL")],
-         widgets=[PIXEL_LORA, 1.0], title="Pixel-art LoRA", props=models(PIXEL_LORA, PIXEL_LORA_URL, "loras",
+         widgets=[PIXEL_LORA, 0.55 if detailed else 1.0], title="Pixel-art LoRA", props=models(PIXEL_LORA, PIXEL_LORA_URL, "loras",
                                                                        "LoraLoaderModelOnly"))
     node(3, "ModelSamplingAuraFlow", [0, 240], [350, 58], inputs=[inp("model", "MODEL")], outputs=[out("MODEL", "MODEL")],
          widgets=[3.0])
@@ -64,7 +85,7 @@ def build_master():
     node(5, "VAELoader", [0, 485], [350, 58], outputs=[out("VAE", "VAE")], widgets=[ZIMAGE_VAE],
          props=models(ZIMAGE_VAE, f"{ZIMAGE_HF}/vae/{ZIMAGE_VAE}", "vae", "VAELoader"))
     node(6, "CLIPTextEncode", [400, 0], [420, 225], inputs=[inp("clip", "CLIP")],
-         outputs=[out("CONDITIONING", "CONDITIONING")], widgets=[MASTER_PROMPT], title="Scene prompt", color=GREEN)
+         outputs=[out("CONDITIONING", "CONDITIONING")], widgets=[prompt], title="Scene prompt", color=GREEN)
     node(7, "ConditioningZeroOut", [400, 265], [240, 45], inputs=[inp("conditioning", "CONDITIONING")],
          outputs=[out("CONDITIONING", "CONDITIONING")])
     node(8, "EmptySD3LatentImage", [400, 350], [320, 106], outputs=[out("LATENT", "LATENT")],
@@ -80,20 +101,20 @@ def build_master():
                  (7, 0, 9, 2), (8, 0, 9, 3), (9, 0, 10, 0), (5, 0, 10, 1)]:
         link(*wire)
     pixelize(g, 11, 1250, 0, 10, title="Master pixels", size=160, measure="whole frame",
-             colors=32, background="keep", edge_cleanup=False)
-    save_image(g, 12, 1650, 0, 11, "environment_master", "Save native master")
-    save_image(g, 13, 1650, 345, 10, "environment_master_raw", "Save raw master")
+             colors=48 if detailed else 32, background="keep", edge_cleanup=False)
+    save_image(g, 12, 1650, 0, 11, prefix, "Save native master")
+    save_image(g, 13, 1650, 345, 10, prefix + "_raw", "Save raw master")
     preview_text(g, 14, 1250, 485, 11, 2, "Master palette")
     node(15, "Note", [400, 510], [420, 230], widgets=[
         "Draw a full-bleed scene at about 2.4:1. Whole-frame pixelizing keeps the exact composition and the opaque sky. "
         "Default: 1536×640 → 384×160. Use the native scene and its hex palette in both environment asset workflows."
     ], title="READ ME", props={})
-    g.save(ROOT / "environment-master.json", "pixel-art-environment-master",
+    g.save(ROOT / f"environment-master{suffix}.json", f"pixel-art-environment-master{suffix}",
            app=([(6, "text"), (8, "width"), (8, "height"), (9, "seed"), (11, "pixels"),
                  (11, "colors"), (11, "palette")], [12, 13, 14]))
 
 
-def build_asset(kind, prompt):
+def build_asset(kind, prompt, quiet=False):
     g = Graph()
     node, link = g.node, g.link
     node(1, "LoadImage", [0, 0], [335, 335], outputs=[out("IMAGE", "IMAGE"), out("MASK", "MASK")],
@@ -134,8 +155,9 @@ def build_asset(kind, prompt):
         save_image(g, 21, 2385, 0, 20, "environment_prop", "Save native transparent prop")
         preview = []
     else:
+        prefix = "environment_detailed_tile" if quiet else "environment_tile"
         pixelize(g, 20, 1600, 0, 5, title="Material pixels", size=64, measure="whole frame",
-                 colors=0, background="keep", edge_cleanup=False)
+                 colors=0, background="keep", edge_cleanup=False, smooth=0.3 if quiet else 0.0)
         node(22, "MakeTileable", [1990, 0], [335, 180], inputs=[inp("images", "IMAGE")],
              outputs=[out("tile", "IMAGE"), out("preview", "IMAGE")],
              widgets=[32, 0, 3, 2, "both", 0], title="Seamless material", color=YELLOW)
@@ -143,19 +165,22 @@ def build_asset(kind, prompt):
         node(24, "ImageScaleBy", [1990, 220], [335, 82], inputs=[inp("image", "IMAGE")],
              outputs=[out("IMAGE", "IMAGE")], widgets=["nearest-exact", 1.0], title="Output scale")
         link(22, 0, 24, 0)
-        save_image(g, 21, 2385, 0, 24, "environment_tile", "Save native repeating tile")
-        save_image(g, 23, 2385, 345, 22, "environment_tile_repeat", "Save repeat check", slot=1)
+        save_image(g, 21, 2385, 0, 24, prefix, "Save native repeating tile")
+        save_image(g, 23, 2385, 345, 22, prefix + "_repeat", "Save repeat check", slot=1)
         preview = [23]
     node(30, "Note", [0, 510], [335, 250], widgets=[
         "Load the native master PNG as an actual visual reference. In Asset prompt ask for one new asset, "
         "rather than a remake of the whole scene. Paste the Master palette output in the pixels node to share "
         "its colours. The raw image is saved so you can inspect framing before quantization."
     ], title="READ ME", props={})
-    g.save(ROOT / f"environment-{kind}.json", f"pixel-art-environment-{kind}",
+    suffix = "-detailed" if quiet else ""
+    g.save(ROOT / f"environment-{kind}{suffix}.json", f"pixel-art-environment-{kind}{suffix}",
            app=([(1, "image"), (70, "prompt"), (4, "seed"), (20, "pixels"), (20, "palette")], [21, 6, *preview]))
 
 
 if __name__ == "__main__":
     build_master()
+    build_master(detailed=True)
     build_asset("prop", PROP_PROMPT)
     build_asset("material", MATERIAL_PROMPT)
+    build_asset("material", QUIET_MATERIAL_PROMPT, quiet=True)

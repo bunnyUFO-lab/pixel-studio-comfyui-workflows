@@ -11,6 +11,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 from compose_pixel_environment import compose, transition_mask  # noqa: E402
 
 
+class EnvironmentGraphTests(unittest.TestCase):
+    def nodes(self, name):
+        path = Path(__file__).resolve().parents[1] / "workflows" / "pixel-art" / f"{name}.json"
+        return {node.get("title"): node for node in json.loads(path.read_text(encoding="utf-8"))["nodes"]}
+
+    def test_detailed_master_retains_the_native_contract(self):
+        classic = self.nodes("environment-master")
+        detailed = self.nodes("environment-master-detailed")
+        for title in ("Canvas size", "Master sample"):
+            self.assertEqual(detailed[title]["widgets_values"], classic[title]["widgets_values"])
+        self.assertEqual(classic["Pixel-art LoRA"]["widgets_values"][1], 1.0)
+        self.assertEqual(detailed["Pixel-art LoRA"]["widgets_values"][1], 0.55)
+        old, new = (nodes["Master pixels"]["widgets_values"] for nodes in (classic, detailed))
+        self.assertEqual(old[:4], new[:4])
+        self.assertEqual((old[4], new[4]), (32, 48))
+        self.assertEqual(new[8], "keep")
+        self.assertIn("Save native master", detailed)
+        self.assertIn("Save raw master", detailed)
+
+    def test_quieter_material_retains_the_repeat_contract(self):
+        classic = self.nodes("environment-material")
+        detailed = self.nodes("environment-material-detailed")
+        self.assertEqual(detailed["Seamless material"]["widgets_values"], [32, 0, 3, 2, "both", 0])
+        self.assertEqual(detailed["Asset sample"]["widgets_values"], classic["Asset sample"]["widgets_values"])
+        self.assertEqual(detailed["Material pixels"]["widgets_values"][3], 0.3)
+        self.assertIn("Save native repeating tile", detailed)
+        self.assertIn("Save repeat check", detailed)
+
+
 class EnvironmentMapTests(unittest.TestCase):
     def test_every_matching_pair_shares_edge_mask(self):
         size = 8
