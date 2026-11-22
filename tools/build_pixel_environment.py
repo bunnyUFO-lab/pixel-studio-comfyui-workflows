@@ -159,4 +159,3 @@ if __name__ == "__main__":
     build_master()
     build_asset("prop", PROP_PROMPT)
     build_asset("material", MATERIAL_PROMPT)
-

@@ -65,9 +65,16 @@ def image_layer(id_, name, file, position=(0, 0)):
             "offsetx": position[0], "offsety": position[1], "opacity": 1, "visible": True}
 
 
-def tiled_map(cells, width, height, size, prop_layers):
-    colors = [{"name": "Material A", "color": "#c8855d", "probability": 1, "tile": 0},
-              {"name": "Material B", "color": "#699b81", "probability": 1, "tile": 15}]
+def terrain_swatch(image):
+    _, (r, g, b, _) = max(image.getcolors(image.width * image.height))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def tiled_map(cells, width, height, materials, prop_layers):
+    a, b = materials
+    size = a.width
+    colors = [{"name": "Material A", "color": terrain_swatch(a), "probability": 1, "tile": 0},
+              {"name": "Material B", "color": terrain_swatch(b), "probability": 1, "tile": 15}]
     wangtiles = []
     for index in range(16):
         tl, tr, br, bl = (1 + ((index >> i) & 1) for i in range(len(CORNERS)))
@@ -160,7 +167,7 @@ def compose(background, material_a, material_b, layout_path, out):
     atlas.save(out / "environment-tiles.png")
     terrain.save(out / "environment-ground.png")
     scene.save(out / "environment-scene.png")
-    (out / "environment.tmj").write_text(json.dumps(tiled_map(cells, width, height, size, prop_layers), indent=2) + "\n",
+    (out / "environment.tmj").write_text(json.dumps(tiled_map(cells, width, height, (a, b), prop_layers), indent=2) + "\n",
                                           encoding="utf-8")
     metrics = {
         "native_size": list(scene.size), "tile_size": size, "ground_cells": sum(gid != 0 for gid in cells),
@@ -188,4 +195,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
