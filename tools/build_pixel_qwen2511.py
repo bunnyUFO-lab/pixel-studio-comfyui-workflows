@@ -306,5 +306,6 @@ Licence: Apache-2.0 (model and both LoRAs)."""
     ], scale=0.5, offset=(40, 80))
 
 
-build_edit()
-build_directions()
+if __name__ == "__main__":
+    build_edit()
+    build_directions()
