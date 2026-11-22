@@ -76,7 +76,7 @@ def build_master(detailed=False):
          title="Z-Image Turbo", props=models(ZIMAGE_MODEL, f"{ZIMAGE_HF}/diffusion_models/{ZIMAGE_MODEL}", "diffusion_models",
                                                "UNETLoader"))
     node(2, "LoraLoaderModelOnly", [0, 120], [350, 82], inputs=[inp("model", "MODEL")], outputs=[out("MODEL", "MODEL")],
-         widgets=[PIXEL_LORA, 0.55 if detailed else 1.0], title="Pixel-art LoRA", props=models(PIXEL_LORA, PIXEL_LORA_URL, "loras",
+         widgets=[PIXEL_LORA, 1.0], title="Pixel-art LoRA", props=models(PIXEL_LORA, PIXEL_LORA_URL, "loras",
                                                                        "LoraLoaderModelOnly"))
     node(3, "ModelSamplingAuraFlow", [0, 240], [350, 58], inputs=[inp("model", "MODEL")], outputs=[out("MODEL", "MODEL")],
          widgets=[3.0])

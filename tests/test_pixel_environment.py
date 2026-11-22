@@ -12,20 +12,31 @@ from compose_pixel_environment import compose, transition_mask  # noqa: E402
 
 
 class EnvironmentGraphTests(unittest.TestCase):
-    def nodes(self, name):
+    def graph(self, name):
         path = Path(__file__).resolve().parents[1] / "workflows" / "pixel-art" / f"{name}.json"
-        return {node.get("title"): node for node in json.loads(path.read_text(encoding="utf-8"))["nodes"]}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def nodes(self, name):
+        return {node.get("title"): node for node in self.graph(name)["nodes"] if node.get("title")}
 
     def test_detailed_master_retains_the_native_contract(self):
         classic = self.nodes("environment-master")
         detailed = self.nodes("environment-master-detailed")
-        for title in ("Canvas size", "Master sample"):
-            self.assertEqual(detailed[title]["widgets_values"], classic[title]["widgets_values"])
-        self.assertEqual(classic["Pixel-art LoRA"]["widgets_values"][1], 1.0)
-        self.assertEqual(detailed["Pixel-art LoRA"]["widgets_values"][1], 0.55)
+        old_graph = self.graph("environment-master")
+        new_graph = self.graph("environment-master-detailed")
+        self.assertEqual(old_graph["links"], new_graph["links"])
+        self.assertEqual(len(old_graph["nodes"]), len(new_graph["nodes"]))
+        for old_node, new_node in zip(old_graph["nodes"], new_graph["nodes"]):
+            if old_node.get("title") in {"Scene prompt", "Master pixels", "Save native master", "Save raw master"}:
+                self.assertEqual({**old_node, "widgets_values": new_node["widgets_values"]}, new_node)
+            else:
+                self.assertEqual(old_node, new_node)
+        self.assertEqual(detailed["Pixel-art LoRA"]["widgets_values"][1], 1.0)
+        self.assertEqual(detailed["Master sample"]["widgets_values"][:4], [2601, "fixed", 8, 1.0])
         old, new = (nodes["Master pixels"]["widgets_values"] for nodes in (classic, detailed))
         self.assertEqual(old[:4], new[:4])
         self.assertEqual((old[4], new[4]), (32, 48))
+        self.assertEqual(old[5:], new[5:])
         self.assertEqual(new[8], "keep")
         self.assertIn("Save native master", detailed)
         self.assertIn("Save raw master", detailed)

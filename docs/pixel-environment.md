@@ -10,7 +10,7 @@ Run from the workflows checkout using the normal ComfyUI server. Replace the sce
 python "$S" run workflows/pixel-art/environment-master.json --out out/coast/master
 ```
 
-Use `pixel-art/environment-master-detailed` for a standalone painterly background on the same native grid. Its prompt asks for overlapping natural silhouettes, directional light and stepped shading. It uses the same Z-Image Turbo checkpoint at eight steps and CFG 1, with the pixel LoRA at 0.55 and a 48-colour ceiling. The original master keeps its stronger LoRA and 32-colour finish.
+Use `pixel-art/environment-master-detailed` for a standalone painterly background on the same native grid. Its prompt asks for overlapping natural silhouettes, directional light and stepped shading. The Classic and Painterly graphs use the same Z-Image Turbo checkpoint, LoRA at 1.0, seed 2601, canvas, sampler and eight steps at CFG 1. Painterly raises the native colour ceiling from 32 to 48. For a same-seed comparison save both raw and native outputs. To compare just palette reduction, run the two finishes on one of those raw images.
 
 Use the native background as the reference for a separate prop. For ground, `pixel-art/environment-material-detailed` asks for a single top-down material with broad, low-contrast patches and restrained accents. The Qwen graph smooths before reducing the texture to 64 px, then extracts a native 32 px tile and saves its 3×3 repeat. Use two independently drawn materials for a reusable transition set. Create the playable layout separately.
 

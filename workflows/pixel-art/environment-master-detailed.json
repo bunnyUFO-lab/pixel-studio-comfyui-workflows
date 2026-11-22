@@ -88,7 +88,7 @@
       },
       "widgets_values": [
         "pixel_art_style_z_image_turbo.safetensors",
-        0.55
+        1.0
       ],
       "title": "Pixel-art LoRA"
     },
