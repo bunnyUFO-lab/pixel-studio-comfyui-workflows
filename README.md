@@ -29,6 +29,11 @@ How these workflows get real pixel art out of a diffusion model, step by step, b
 | [`pixel-art/h3-caption`](workflows/pixel-art/h3-caption.json) | The model half of our MiniMax H3 prompt fixer: a short ask plus the sprite (on white, x4) in, the action caption H3 responds to out, written twice with seeds 7 and 8 by Qwen3-VL 8B (Apache 2.0) through `TextGenerate`. No video model; about 25 to 60 s and 2 to 5 cents on the cloud worker. The word checks and repairs are code in the app. Needs ComfyUI 0.41. |
 | [`pixel-art/sprite-from-video`](workflows/pixel-art/sprite-from-video.json) | Animates a sprite by copying the motion of a video. |
 | [`pixel-art/sprite-inbetween`](workflows/pixel-art/sprite-inbetween.json) | Draws the frames between key frames of an animation. |
+| [`pixel-art/environment-master`](workflows/pixel-art/environment-master.json) | Draws an opaque full-bleed background and a shared native pixel palette (Z-Image Turbo). |
+| [`pixel-art/environment-master-detailed`](workflows/pixel-art/environment-master-detailed.json) | Draws a painterly opaque background with softer silhouettes and a wider colour range, on the same native grid. |
+| [`pixel-art/environment-prop`](workflows/pixel-art/environment-prop.json) | Draws a matching transparent prop from the actual master reference (Qwen-Image-Edit-2511). |
+| [`pixel-art/environment-material`](workflows/pixel-art/environment-material.json) | Draws a matching repeating ground material from the master. See the [environment recipe](docs/pixel-environment.md) for an editable two-material Tiled map. |
+| [`pixel-art/environment-material-detailed`](workflows/pixel-art/environment-material-detailed.json) | Draws a low-contrast, painterly ground material. Inspect the 3×3 repeat before using the native tile. |
 | [`pixel-art/prompt-to-tile`](workflows/pixel-art/prompt-to-tile.json) | Makes a seamless terrain tile from a prompt. |
 | [`pixel-art/prompt-to-setpiece`](workflows/pixel-art/prompt-to-setpiece.json) | Makes a large scenery object (a tree, a cliff, a tower) from a prompt. |
 | [`pixel-art/prompt-to-scenery-layer`](workflows/pixel-art/prompt-to-scenery-layer.json) | Makes a repeating parallax background layer from a prompt. |

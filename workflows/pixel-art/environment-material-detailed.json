@@ -1,0 +1,1173 @@
+{
+  "id": "89d0392a-3746-5d5c-9229-5896e0c7a430",
+  "revision": 0,
+  "last_node_id": 73,
+  "last_link_id": 24,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        335,
+        335
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "Environment reference",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 2,
+      "type": "ImageScaleBy",
+      "pos": [
+        0,
+        385
+      ],
+      "size": [
+        335,
+        82
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            11,
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScaleBy"
+      },
+      "widgets_values": [
+        "nearest-exact",
+        2.0
+      ],
+      "title": "Reference ×2 (keep the pixel clusters)"
+    },
+    {
+      "id": 60,
+      "type": "UNETLoader",
+      "pos": [
+        380,
+        0
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_edit_2511_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_edit_2511_int8_convrot.safetensors",
+        "default"
+      ],
+      "title": "Qwen-Image-Edit-2511"
+    },
+    {
+      "id": 61,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        380,
+        240
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly",
+        "models": [
+          {
+            "name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+            "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+            "directory": "loras"
+          }
+        ]
+      },
+      "widgets_values": [
+        "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+        1.0
+      ],
+      "title": "Lightning LoRA (4 steps; strength 0 for full model)"
+    },
+    {
+      "id": 62,
+      "type": "ModelSamplingAuraFlow",
+      "pos": [
+        380,
+        360
+      ],
+      "size": [
+        340,
+        58
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ModelSamplingAuraFlow"
+      },
+      "widgets_values": [
+        3.1
+      ]
+    },
+    {
+      "id": 63,
+      "type": "CFGNorm",
+      "pos": [
+        380,
+        450
+      ],
+      "size": [
+        340,
+        82
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "patched_model",
+          "type": "MODEL",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CFGNorm"
+      },
+      "widgets_values": [
+        1.0,
+        false
+      ]
+    },
+    {
+      "id": 64,
+      "type": "CLIPLoader",
+      "pos": [
+        380,
+        570
+      ],
+      "size": [
+        340,
+        106
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            5,
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "title": "Qwen2.5-VL 7B text encoder"
+    },
+    {
+      "id": 65,
+      "type": "VAELoader",
+      "pos": [
+        380,
+        710
+      ],
+      "size": [
+        340,
+        58
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            6,
+            8,
+            18
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_vae.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_vae.safetensors"
+      ]
+    },
+    {
+      "id": 70,
+      "type": "TextEncodeQwenImageEditPlus",
+      "pos": [
+        770,
+        0
+      ],
+      "size": [
+        420,
+        200
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 5
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImageEditPlus"
+      },
+      "widgets_values": [
+        "Use the input landscape for the palette, material and shading. Draw one matte sandstone surface seen directly from above, filling the square edge to edge. Use broad painterly patches with subtle stepped shades, shallow irregular cracks and a few larger stone chips. Keep the contrast low so sprites and path markers remain easy to read. Avoid scattered single-pixel specks, evenly spaced decoration, hard lines along outer edges, highlights that look wet, perspective, objects, text, and borders."
+      ],
+      "title": "Asset prompt",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 71,
+      "type": "FluxKontextMultiReferenceLatentMethod",
+      "pos": [
+        770,
+        240
+      ],
+      "size": [
+        420,
+        58
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FluxKontextMultiReferenceLatentMethod"
+      },
+      "widgets_values": [
+        "index_timestep_zero"
+      ]
+    },
+    {
+      "id": 72,
+      "type": "TextEncodeQwenImageEditPlus",
+      "pos": [
+        770,
+        330
+      ],
+      "size": [
+        420,
+        120
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 8
+        },
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImageEditPlus"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Empty negative",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 73,
+      "type": "FluxKontextMultiReferenceLatentMethod",
+      "pos": [
+        770,
+        490
+      ],
+      "size": [
+        420,
+        58
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FluxKontextMultiReferenceLatentMethod"
+      },
+      "widgets_values": [
+        "index_timestep_zero"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "EmptySD3LatentImage",
+      "pos": [
+        770,
+        600
+      ],
+      "size": [
+        320,
+        106
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptySD3LatentImage"
+      },
+      "widgets_values": [
+        768,
+        768,
+        1
+      ],
+      "title": "Asset canvas",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 4,
+      "type": "KSampler",
+      "pos": [
+        1230,
+        0
+      ],
+      "size": [
+        320,
+        262
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 13
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 14
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 15
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        2603,
+        "fixed",
+        4,
+        1.0,
+        "euler",
+        "simple",
+        1.0
+      ],
+      "title": "Asset sample"
+    },
+    {
+      "id": 5,
+      "type": "VAEDecode",
+      "pos": [
+        1230,
+        300
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 17
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            19,
+            20
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 6,
+      "type": "SaveImage",
+      "pos": [
+        1230,
+        390
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 19
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/environment_material_raw"
+      ],
+      "title": "Save raw asset",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 20,
+      "type": "Pixelize",
+      "pos": [
+        1600,
+        0
+      ],
+      "size": [
+        350,
+        440
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixel_art",
+          "type": "IMAGE",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "preview",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "palette",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Pixelize"
+      },
+      "widgets_values": [
+        64,
+        "whole frame",
+        "median",
+        0.3,
+        0,
+        20.0,
+        "auto",
+        true,
+        "keep",
+        12.0,
+        false,
+        false,
+        "none",
+        0,
+        2
+      ],
+      "title": "Material pixels",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 22,
+      "type": "MakeTileable",
+      "pos": [
+        1990,
+        0
+      ],
+      "size": [
+        335,
+        180
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tile",
+          "type": "IMAGE",
+          "links": [
+            22
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "preview",
+          "type": "IMAGE",
+          "links": [
+            24
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MakeTileable"
+      },
+      "widgets_values": [
+        32,
+        0,
+        3,
+        2,
+        "both",
+        0
+      ],
+      "title": "Seamless material",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 24,
+      "type": "ImageScaleBy",
+      "pos": [
+        1990,
+        220
+      ],
+      "size": [
+        335,
+        82
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            23
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScaleBy"
+      },
+      "widgets_values": [
+        "nearest-exact",
+        1.0
+      ],
+      "title": "Output scale"
+    },
+    {
+      "id": 21,
+      "type": "SaveImage",
+      "pos": [
+        2385,
+        0
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/environment_detailed_tile"
+      ],
+      "title": "Save native repeating tile",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 23,
+      "type": "SaveImage",
+      "pos": [
+        2385,
+        345
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 24
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "pixel/environment_detailed_tile_repeat"
+      ],
+      "title": "Save repeat check",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 30,
+      "type": "Note",
+      "pos": [
+        0,
+        510
+      ],
+      "size": [
+        335,
+        250
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Load the native master PNG as an actual visual reference. In Asset prompt ask for one new asset, rather than a remake of the whole scene. Paste the Master palette output in the pixels node to share its colours. The raw image is saved so you can inspect framing before quantization."
+      ],
+      "title": "READ ME"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      60,
+      0,
+      61,
+      0,
+      "MODEL"
+    ],
+    [
+      3,
+      61,
+      0,
+      62,
+      0,
+      "MODEL"
+    ],
+    [
+      4,
+      62,
+      0,
+      63,
+      0,
+      "MODEL"
+    ],
+    [
+      5,
+      64,
+      0,
+      70,
+      0,
+      "CLIP"
+    ],
+    [
+      6,
+      65,
+      0,
+      70,
+      1,
+      "VAE"
+    ],
+    [
+      7,
+      64,
+      0,
+      72,
+      0,
+      "CLIP"
+    ],
+    [
+      8,
+      65,
+      0,
+      72,
+      1,
+      "VAE"
+    ],
+    [
+      9,
+      70,
+      0,
+      71,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      72,
+      0,
+      73,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      2,
+      0,
+      70,
+      2,
+      "IMAGE"
+    ],
+    [
+      12,
+      2,
+      0,
+      72,
+      2,
+      "IMAGE"
+    ],
+    [
+      13,
+      63,
+      0,
+      4,
+      0,
+      "MODEL"
+    ],
+    [
+      14,
+      71,
+      0,
+      4,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      15,
+      73,
+      0,
+      4,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      16,
+      3,
+      0,
+      4,
+      3,
+      "LATENT"
+    ],
+    [
+      17,
+      4,
+      0,
+      5,
+      0,
+      "LATENT"
+    ],
+    [
+      18,
+      65,
+      0,
+      5,
+      1,
+      "VAE"
+    ],
+    [
+      19,
+      5,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      20,
+      5,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      21,
+      20,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      22,
+      0,
+      24,
+      0,
+      "IMAGE"
+    ],
+    [
+      23,
+      24,
+      0,
+      21,
+      0,
+      "IMAGE"
+    ],
+    [
+      24,
+      22,
+      1,
+      23,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7,
+      "offset": [
+        60,
+        120
+      ]
+    },
+    "linearMode": true,
+    "linearData": {
+      "inputs": [
+        [
+          "1",
+          "image"
+        ],
+        [
+          "70",
+          "prompt"
+        ],
+        [
+          "4",
+          "seed"
+        ],
+        [
+          "20",
+          "pixels"
+        ],
+        [
+          "20",
+          "palette"
+        ]
+      ],
+      "outputs": [
+        "21",
+        "6",
+        "23"
+      ]
+    }
+  },
+  "version": 0.4
+}
